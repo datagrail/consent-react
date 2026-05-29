@@ -1,0 +1,15 @@
+{
+  "name": "@datagrail/react-native-consent-expo-plugin",
+  "version": "0.1.0-alpha.1",
+  "description": "Expo config plugin for @datagrail/react-native-consent — auto-configures ATT usage description",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "expo": ">=50.0.0"
+  },
+  "license": "MIT"
+}
