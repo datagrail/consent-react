@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { Appearance } from 'react-native';
 import type { ConsentConfig } from '../types';
 
 export interface BannerTheme {
@@ -27,11 +29,6 @@ export interface BannerTheme {
     small: number;
     button: number;
   };
-}
-
-// TODO: Agent implements
-export function extractTheme(_config: ConsentConfig, _isDarkMode?: boolean): BannerTheme {
-  throw new Error('Not implemented');
 }
 
 export const DEFAULT_LIGHT_THEME: BannerTheme = {
@@ -69,3 +66,38 @@ export const DEFAULT_DARK_THEME: BannerTheme = {
   borderRadius: 12,
   fontSize: { title: 20, body: 14, small: 12, button: 16 },
 };
+
+/**
+ * Extract a BannerTheme from config.
+ * Currently config doesn't carry explicit theme data (native SDKs use platform defaults),
+ * so we return light/dark based on isDarkMode parameter or system preference.
+ * This function exists so config-driven theming can be added without changing consumers.
+ */
+export function extractTheme(_config: ConsentConfig, isDarkMode?: boolean): BannerTheme {
+  const dark = isDarkMode ?? Appearance.getColorScheme() === 'dark';
+  return dark ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;
+}
+
+/**
+ * React hook that listens to system appearance changes and returns the appropriate theme.
+ */
+export function useTheme(config: ConsentConfig | null): BannerTheme {
+  const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(
+    Appearance.getColorScheme() === 'dark' ? 'dark' : 'light',
+  );
+
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme: scheme }) => {
+      setColorScheme(scheme === 'dark' ? 'dark' : 'light');
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  if (!config) {
+    return colorScheme === 'dark' ? DEFAULT_DARK_THEME : DEFAULT_LIGHT_THEME;
+  }
+
+  return extractTheme(config, colorScheme === 'dark');
+}
