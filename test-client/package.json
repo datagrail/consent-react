@@ -1,0 +1,28 @@
+{
+  "name": "consent-sdk-test-client",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "start": "react-native start",
+    "ios": "react-native run-ios",
+    "android": "react-native run-android",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@datagrail/react-native-consent": "file:..",
+    "@react-navigation/bottom-tabs": "^6.5.0",
+    "@react-navigation/native": "^6.1.0",
+    "react": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-safe-area-context": "^4.8.0",
+    "react-native-screens": "^3.29.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "@babel/runtime": "^7.24.0",
+    "@types/react": "^18.2.0",
+    "metro-react-native-babel-preset": "^0.77.0",
+    "typescript": "^5.4.0"
+  }
+}
