@@ -12,20 +12,27 @@ export class ConsentState {
     this.configVersion = configVersion;
   }
 
-  // TODO: Agent implements
-  isCategoryEnabled(_gtmKey: string): boolean {
-    throw new Error('Not implemented');
+  isCategoryEnabled(gtmKey: string): boolean {
+    const category = this.preferences.cookieOptions.find((opt) => opt.gtmKey === gtmKey);
+    return category?.isEnabled ?? false;
   }
 
   getEnabledCategories(): CategoryConsent[] {
-    throw new Error('Not implemented');
+    return this.preferences.cookieOptions.filter((opt) => opt.isEnabled);
   }
 
   serialize(): string {
-    throw new Error('Not implemented');
+    return JSON.stringify({
+      preferences: this.preferences,
+      configVersion: this.configVersion,
+    });
   }
 
-  static deserialize(_data: string): ConsentState {
-    throw new Error('Not implemented');
+  static deserialize(data: string): ConsentState {
+    const parsed = JSON.parse(data) as {
+      preferences: ConsentPreferences;
+      configVersion: string;
+    };
+    return new ConsentState(parsed.preferences, parsed.configVersion);
   }
 }
