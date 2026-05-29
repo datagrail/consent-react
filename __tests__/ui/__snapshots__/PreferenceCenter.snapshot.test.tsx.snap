@@ -1,0 +1,7 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`PreferenceCenter Snapshots renders with always-on category 1`] = `null`;
+
+exports[`PreferenceCenter Snapshots renders with expanded description 1`] = `null`;
+
+exports[`PreferenceCenter Snapshots renders with multiple categories 1`] = `null`;
