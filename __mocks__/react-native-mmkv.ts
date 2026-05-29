@@ -1,11 +1,22 @@
 /**
  * Jest mock for react-native-mmkv.
  * Provides an in-memory implementation for unit testing.
+ * Instances with the same ID share state (matching real MMKV behavior).
  */
-export class MMKV {
-  private store: Map<string, string | number | boolean> = new Map();
 
-  constructor(_options?: { id?: string }) {}
+const stores = new Map<string, Map<string, string | number | boolean>>();
+
+export class MMKV {
+  private store: Map<string, string | number | boolean>;
+  private id: string;
+
+  constructor(options?: { id?: string }) {
+    this.id = options?.id ?? 'default';
+    if (!stores.has(this.id)) {
+      stores.set(this.id, new Map());
+    }
+    this.store = stores.get(this.id)!;
+  }
 
   set(key: string, value: string | number | boolean): void {
     this.store.set(key, value);
@@ -41,4 +52,12 @@ export class MMKV {
   getAllKeys(): string[] {
     return Array.from(this.store.keys());
   }
+}
+
+/**
+ * Reset all stores between tests.
+ * Call in beforeEach/afterEach if needed.
+ */
+export function __resetAllStores(): void {
+  stores.clear();
 }

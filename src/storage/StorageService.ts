@@ -1,5 +1,7 @@
 import { MMKV } from 'react-native-mmkv';
 import type { ConsentPreferences, ConsentConfig } from '../types';
+import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
+import { runMigrations } from './migrations';
 
 /**
  * Synchronous storage layer backed by MMKV.
@@ -10,51 +12,98 @@ export class StorageService {
 
   constructor(id = 'datagrail-consent') {
     this.storage = new MMKV({ id });
+    runMigrations(this);
   }
 
-  // TODO: Agent implements — preferences CRUD
-  savePreferences(_preferences: ConsentPreferences): void {
-    throw new Error('Not implemented');
+  savePreferences(preferences: ConsentPreferences): void {
+    this.storage.set(STORAGE_KEYS.PREFERENCES, JSON.stringify(preferences));
   }
 
   loadPreferences(): ConsentPreferences | null {
-    throw new Error('Not implemented');
+    const raw = this.storage.getString(STORAGE_KEYS.PREFERENCES);
+    if (raw === undefined) return null;
+    try {
+      return JSON.parse(raw) as ConsentPreferences;
+    } catch {
+      return null;
+    }
   }
 
-  // TODO: Agent implements — unique ID
   getOrCreateUniqueId(): string {
-    throw new Error('Not implemented');
+    const existing = this.storage.getString(STORAGE_KEYS.UNIQUE_ID);
+    if (existing !== undefined) return existing;
+    const id = generateUUID();
+    this.storage.set(STORAGE_KEYS.UNIQUE_ID, id);
+    return id;
   }
 
-  // TODO: Agent implements — config version
-  saveConfigVersion(_version: string): void {
-    throw new Error('Not implemented');
+  saveConfigVersion(version: string): void {
+    this.storage.set(STORAGE_KEYS.VERSION, version);
   }
 
   loadConfigVersion(): string | null {
-    throw new Error('Not implemented');
+    return this.storage.getString(STORAGE_KEYS.VERSION) ?? null;
   }
 
-  // TODO: Agent implements — config cache
-  saveConfigCache(_config: ConsentConfig, _timestamp: number): void {
-    throw new Error('Not implemented');
+  saveConfigCache(config: ConsentConfig, timestamp: number): void {
+    this.storage.set(STORAGE_KEYS.CONFIG_CACHE, JSON.stringify(config));
+    this.storage.set(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP, timestamp.toString());
   }
 
   loadConfigCache(): { config: ConsentConfig; timestamp: number } | null {
-    throw new Error('Not implemented');
+    const raw = this.storage.getString(STORAGE_KEYS.CONFIG_CACHE);
+    const ts = this.storage.getString(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP);
+    if (raw === undefined || ts === undefined) return null;
+    try {
+      const config = JSON.parse(raw) as ConsentConfig;
+      const timestamp = Number(ts);
+      if (isNaN(timestamp)) return null;
+      return { config, timestamp };
+    } catch {
+      return null;
+    }
   }
 
-  // TODO: Agent implements — pending events
-  savePendingEvents(_events: unknown[]): void {
-    throw new Error('Not implemented');
+  savePendingEvents(events: unknown[]): void {
+    this.storage.set(STORAGE_KEYS.PENDING_EVENTS, JSON.stringify(events));
   }
 
   loadPendingEvents(): unknown[] {
-    throw new Error('Not implemented');
+    const raw = this.storage.getString(STORAGE_KEYS.PENDING_EVENTS);
+    if (raw === undefined) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
 
-  // TODO: Agent implements — clear + schema migration
-  clearAll(): void {
-    throw new Error('Not implemented');
+  getSchemaVersion(): number {
+    const raw = this.storage.getString(STORAGE_KEYS.SCHEMA_VERSION);
+    if (raw === undefined) return 0;
+    const version = Number(raw);
+    return isNaN(version) ? 0 : version;
   }
+
+  setSchemaVersion(version: number): void {
+    this.storage.set(STORAGE_KEYS.SCHEMA_VERSION, version.toString());
+  }
+
+  clearAll(): void {
+    this.storage.clearAll();
+    this.storage.set(STORAGE_KEYS.SCHEMA_VERSION, CURRENT_SCHEMA_VERSION.toString());
+  }
+}
+
+/**
+ * Generate a v4 UUID without crypto dependency.
+ * Uses Math.random() which is sufficient for consent tracking IDs.
+ */
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
