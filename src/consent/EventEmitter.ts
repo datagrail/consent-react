@@ -8,13 +8,17 @@ import type { ConsentPreferences, ConsentChangeListener, Unsubscribe } from '../
 export class ConsentEventEmitter {
   private listeners: Set<ConsentChangeListener> = new Set();
 
-  // TODO: Agent implements
-  addListener(_listener: ConsentChangeListener): Unsubscribe {
-    throw new Error('Not implemented');
+  addListener(listener: ConsentChangeListener): Unsubscribe {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
-  emit(_preferences: ConsentPreferences): void {
-    throw new Error('Not implemented');
+  emit(preferences: ConsentPreferences): void {
+    for (const listener of this.listeners) {
+      listener(preferences);
+    }
   }
 
   removeAllListeners(): void {
