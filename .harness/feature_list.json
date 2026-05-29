@@ -1,0 +1,130 @@
+[
+  {
+    "id": "feat-001",
+    "agent": "core",
+    "description": "StorageService — typed MMKV wrapper with get/set/delete/clear, schema migration support",
+    "verification": "npm run test -- --testPathPattern=storage",
+    "dependencies": [],
+    "passes": false
+  },
+  {
+    "id": "feat-002",
+    "agent": "core",
+    "description": "NetworkService — fetch wrapper with timeout, custom headers, abort controller",
+    "verification": "npm run test -- --testPathPattern=network/NetworkService",
+    "dependencies": [],
+    "passes": false
+  },
+  {
+    "id": "feat-003",
+    "agent": "core",
+    "description": "RetryPolicy + retry execution — exponential backoff (5 attempts, 250ms base), retry on 5xx/network error only",
+    "verification": "npm run test -- --testPathPattern=network/RetryPolicy",
+    "dependencies": ["feat-002"],
+    "passes": false
+  },
+  {
+    "id": "feat-004",
+    "agent": "core",
+    "description": "OfflineQueue — persist failed requests to MMKV, drain on reconnect (NetInfo), FIFO order, deduplication",
+    "verification": "npm run test -- --testPathPattern=network/OfflineQueue",
+    "dependencies": ["feat-001", "feat-002"],
+    "passes": false
+  },
+  {
+    "id": "feat-005",
+    "agent": "core",
+    "description": "ConfigService — GET config URL, parse snake_case JSON to camelCase types, cache in MMKV with TTL, stale-while-revalidate",
+    "verification": "npm run test -- --testPathPattern=config/ConfigService",
+    "dependencies": ["feat-001", "feat-003"],
+    "passes": false
+  },
+  {
+    "id": "feat-006",
+    "agent": "core",
+    "description": "ConsentState — category→boolean map, version tracking, serialization to/from MMKV",
+    "verification": "npm run test -- --testPathPattern=consent/ConsentState",
+    "dependencies": ["feat-001"],
+    "passes": false
+  },
+  {
+    "id": "feat-007",
+    "agent": "core",
+    "description": "ConsentResolver — merge server defaults (initialCategories) with local preferences, version bump triggers re-consent",
+    "verification": "npm run test -- --testPathPattern=consent/ConsentResolver",
+    "dependencies": ["feat-005", "feat-006"],
+    "passes": false
+  },
+  {
+    "id": "feat-008",
+    "agent": "core",
+    "description": "EventEmitter — typed listener registration, removal, dispatch, no memory leaks on unmount",
+    "verification": "npm run test -- --testPathPattern=consent/EventEmitter",
+    "dependencies": [],
+    "passes": false
+  },
+  {
+    "id": "feat-009",
+    "agent": "core",
+    "description": "ConsentManager — full orchestrator: initialize flow, public API (isCategoryEnabled, getPreferences, savePreferences, acceptAll, rejectAll, needsConsent, reset), consent service POST",
+    "verification": "npm run test -- --testPathPattern=ConsentManager",
+    "dependencies": ["feat-004", "feat-005", "feat-006", "feat-007", "feat-008"],
+    "passes": false
+  },
+  {
+    "id": "feat-010",
+    "agent": "platform",
+    "description": "ATT bridge — iOS native module (requestTrackingAuthorization, getTrackingStatus), maps ATT result to consent categories, Android no-op",
+    "verification": "npm run test -- --testPathPattern=platform/att",
+    "dependencies": ["feat-009"],
+    "passes": false
+  },
+  {
+    "id": "feat-011",
+    "agent": "platform",
+    "description": "WebViewConsent — generate consent payload JS string, injection helper for react-native-webview, banner suppression utility",
+    "verification": "npm run test -- --testPathPattern=webview",
+    "dependencies": ["feat-009"],
+    "passes": false
+  },
+  {
+    "id": "feat-012",
+    "agent": "ui",
+    "description": "Theme system — extract colors/fonts/spacing/position from config, dark mode support (system preference or config override)",
+    "verification": "npm run test -- --testPathPattern=ui/theme",
+    "dependencies": ["feat-005"],
+    "passes": false
+  },
+  {
+    "id": "feat-013",
+    "agent": "ui",
+    "description": "Banner component — config-driven layout, position variants (top/bottom/center/fullscreen), button actions, animations, showBanner() trigger",
+    "verification": "npm run test -- --testPathPattern=ui/Banner",
+    "dependencies": ["feat-009", "feat-012"],
+    "passes": false
+  },
+  {
+    "id": "feat-014",
+    "agent": "ui",
+    "description": "PreferenceCenter component — category toggles grouped by purpose, save/cancel actions, tracking details expansion, accessibility (VoiceOver/TalkBack labels, focus management)",
+    "verification": "npm run test -- --testPathPattern=ui/PreferenceCenter",
+    "dependencies": ["feat-009", "feat-012"],
+    "passes": false
+  },
+  {
+    "id": "feat-015",
+    "agent": "core",
+    "description": "Integration tests — full lifecycle with real MMKV storage: init → consent check → show banner → save → verify state persisted → offline queue → reconnect → drain",
+    "verification": "npm run test:integration",
+    "dependencies": ["feat-009"],
+    "passes": false
+  },
+  {
+    "id": "feat-016",
+    "agent": "platform",
+    "description": "Expo config plugin — auto-configure NSUserTrackingUsageDescription in Info.plist, customizable description string",
+    "verification": "npm run test -- --testPathPattern=expo-plugin",
+    "dependencies": ["feat-010"],
+    "passes": false
+  }
+]
