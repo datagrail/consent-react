@@ -1,3 +1,6 @@
+import { ConsentError } from '../types';
+import type { NetworkResponse } from './NetworkService';
+
 /**
  * Retry policy matching native SDKs: 5 attempts, 250ms base, exponential backoff.
  * Only retries on 5xx or network errors. Never retries 4xx.
@@ -24,5 +27,56 @@ export function isRetryableStatusCode(status: number): boolean {
 
 export function isRetryableError(error: unknown): boolean {
   if (error instanceof TypeError) return true; // network failure
+  if (error instanceof ConsentError && error.code === 'NETWORK_ERROR') return true;
+  if (error instanceof ConsentError && error.code === 'TIMEOUT') return true;
   return false;
+}
+
+/**
+ * Execute an async operation with exponential backoff retry.
+ * Retries on 5xx responses or network errors. Never retries 4xx.
+ */
+export async function retryWithBackoff<T extends NetworkResponse>(
+  operation: () => Promise<T>,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG,
+): Promise<T> {
+  let lastError: unknown;
+  let lastResponse: T | undefined;
+
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
+    try {
+      const response = await operation();
+
+      // If response status is retryable (5xx), retry
+      if (isRetryableStatusCode(response.status) && attempt < config.maxAttempts) {
+        lastResponse = response;
+        await delay(getBackoffDelay(attempt, config.baseDelayMs));
+        continue;
+      }
+
+      // 4xx or 2xx — return immediately (never retry 4xx)
+      return response;
+    } catch (error: unknown) {
+      lastError = error;
+
+      // Only retry on retryable errors
+      if (!isRetryableError(error) || attempt === config.maxAttempts) {
+        throw error;
+      }
+
+      await delay(getBackoffDelay(attempt, config.baseDelayMs));
+    }
+  }
+
+  // If we exhausted retries due to 5xx responses, return the last response
+  if (lastResponse !== undefined) {
+    return lastResponse;
+  }
+
+  // Should not reach here, but throw last error as safety net
+  throw lastError;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
