@@ -1,26 +1,26 @@
 # consent-react — Progress
 
-## Status: Scaffolding Complete → Ready for Agent Execution
+## Status: Core Agent Complete (9/10 features passing)
 
-## Features: 0/16 passing
+## Features: 10/16 passing
 
 | ID | Agent | Description | Status |
 |----|-------|-------------|--------|
-| feat-001 | core | StorageService (MMKV wrapper) | [ ] |
-| feat-002 | core | NetworkService (fetch wrapper) | [ ] |
-| feat-003 | core | RetryPolicy + execution | [ ] |
-| feat-004 | core | OfflineQueue | [ ] |
-| feat-005 | core | ConfigService (parse + cache) | [ ] |
-| feat-006 | core | ConsentState | [ ] |
-| feat-007 | core | ConsentResolver | [ ] |
-| feat-008 | core | EventEmitter | [ ] |
-| feat-009 | core | ConsentManager (full orchestrator) | [ ] |
+| feat-001 | core | StorageService (MMKV wrapper) | [x] |
+| feat-002 | core | NetworkService (fetch wrapper) | [x] |
+| feat-003 | core | RetryPolicy + execution | [x] |
+| feat-004 | core | OfflineQueue | [x] |
+| feat-005 | core | ConfigService (parse + cache) | [x] |
+| feat-006 | core | ConsentState | [x] |
+| feat-007 | core | ConsentResolver | [x] |
+| feat-008 | core | EventEmitter | [x] |
+| feat-009 | core | ConsentManager (full orchestrator) | [x] |
 | feat-010 | platform | ATT bridge (iOS + Android no-op) | [ ] |
 | feat-011 | platform | WebViewConsent | [ ] |
 | feat-012 | ui | Theme system | [ ] |
 | feat-013 | ui | Banner component | [ ] |
 | feat-014 | ui | PreferenceCenter component | [ ] |
-| feat-015 | core | Integration tests | [ ] |
+| feat-015 | core | Integration tests | [x] |
 | feat-016 | platform | Expo config plugin | [ ] |
 
 ## Agent Assignment
