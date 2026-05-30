@@ -70,5 +70,7 @@ echo "==> Starting Metro bundler + $PLATFORM app..."
 if [ "$PLATFORM" = "ios" ]; then
   npx react-native run-ios $DEVICE_FLAG
 elif [ "$PLATFORM" = "android" ]; then
+  # Kill stale Gradle daemons/locks that can block builds
+  find ~/.gradle/wrapper/dists -name "*.lck" -delete 2>/dev/null
   npx react-native run-android $DEVICE_FLAG
 fi
