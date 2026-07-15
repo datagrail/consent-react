@@ -29,8 +29,9 @@ export function PreferenceCenter({
 }: PreferenceCenterProps): React.ReactElement {
   const config = ConsentManager.getConfig();
   const theme = useTheme(config);
-  // ponytail: no device-locale detection (RN has no zero-dependency API for it); defaults to
-  // 'en', add real detection if a locale library is ever pulled in.
+  // No device-locale detection: React Native has no zero-dependency API for
+  // reading the device locale, so we default to 'en'. Add real detection if a
+  // locale library is ever pulled in.
   const resolvedLocale = locale ?? 'en';
 
   const categories = useMemo(() => {

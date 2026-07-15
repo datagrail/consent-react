@@ -38,8 +38,9 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
   const [reduceMotion, setReduceMotion] = useState(false);
   const animValue = useRef(new Animated.Value(0)).current;
 
-  // ponytail: no device-locale detection (RN has no zero-dependency API for it); defaults to
-  // 'en', add real detection if a locale library is ever pulled in.
+  // No device-locale detection: React Native has no zero-dependency API for
+  // reading the device locale, so we default to 'en'. Add real detection if a
+  // locale library is ever pulled in.
   const resolvedLocale = locale ?? 'en';
 
   const initializeCategoryState = useCallback((cfg: ConsentConfig) => {
