@@ -4,3 +4,12 @@ lib/
 *.tsbuildinfo
 coverage/
 .expo/
+
+# test-client native build artifacts
+test-client/ios/Pods/
+test-client/ios/build/
+test-client/ios/*.xcworkspace/
+test-client/ios/.xcode.env.local
+test-client/android/build/
+test-client/android/app/build/
+test-client/android/.gradle/
