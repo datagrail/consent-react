@@ -262,7 +262,10 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     mockFetchSuccess(JSON.stringify(configWithBanner));
     await initialize({ configUrl: 'https://cdn.example.com/config.json' });
 
-    // Save prefs (sets version to match)
+    // Fresh init, no real consent yet — banner must show
+    expect(needsConsent()).toBe(true);
+
+    // Save prefs (real user consent, sets version to match)
     const mockHeaders = new Map<string, string>();
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
@@ -276,9 +279,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
 
     expect(needsConsent()).toBe(false);
 
-    // Now re-init with a different config version
+    // Re-init with a bumped config version, without clearing storage — simulates the
+    // backend publishing a new config version on top of the user's existing consent.
     reset();
-    __resetAllStores();
 
     const newConfig = JSON.parse(testConfigJson);
     newConfig.showBanner = true;
@@ -286,9 +289,23 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     mockFetchSuccess(JSON.stringify(newConfig));
     await initialize({ configUrl: 'https://cdn.example.com/config.json' });
 
-    // Since storage was cleared and re-initialized, defaults are saved
-    // needsConsent checks if saved version matches current
-    expect(needsConsent()).toBe(false);
+    // Prior real consent exists but for an old config version — reconsent required.
+    expect(needsConsent()).toBe(true);
+  });
+
+  it('needsConsent returns true on a genuine first run after a full reset', async () => {
+    const configWithBanner = JSON.parse(testConfigJson);
+    configWithBanner.showBanner = true;
+    mockFetchSuccess(JSON.stringify(configWithBanner));
+    await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+    reset();
+    __resetAllStores();
+
+    mockFetchSuccess(JSON.stringify(configWithBanner));
+    await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+    expect(needsConsent()).toBe(true);
   });
 
   it('persists consent ID across sessions (re-initialization)', async () => {

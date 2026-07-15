@@ -74,14 +74,14 @@ export function needsConsent(): boolean {
     return false;
   }
 
-  const savedPrefs = storageService!.loadPreferences();
-  const savedVersion = storageService!.loadConfigVersion();
-
-  if (savedPrefs === null) {
+  // Auto-persisted defaults (written by initialize()) don't count as consent —
+  // only an explicit savePreferences/acceptAll/rejectAll does.
+  if (!storageService!.hasUserConsented()) {
     return true;
   }
 
   // Version mismatch triggers reconsent
+  const savedVersion = storageService!.loadConfigVersion();
   return savedVersion !== currentConfig!.version;
 }
 
@@ -121,6 +121,7 @@ export async function savePreferences(prefs: ConsentPreferences): Promise<void> 
   // Save to storage
   storageService!.savePreferences(prefs);
   storageService!.saveConfigVersion(currentConfig!.version);
+  storageService!.setUserConsented(true);
 
   // Emit event
   eventEmitter.emit(prefs);

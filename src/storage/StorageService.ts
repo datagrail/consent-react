@@ -45,6 +45,14 @@ export class StorageService {
     return this.storage.getString(STORAGE_KEYS.VERSION) ?? null;
   }
 
+  setUserConsented(value: boolean): void {
+    this.storage.set(STORAGE_KEYS.USER_CONSENTED, value);
+  }
+
+  hasUserConsented(): boolean {
+    return this.storage.getBoolean(STORAGE_KEYS.USER_CONSENTED) ?? false;
+  }
+
   saveConfigCache(config: ConsentConfig, timestamp: number): void {
     this.storage.set(STORAGE_KEYS.CONFIG_CACHE, JSON.stringify(config));
     this.storage.set(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP, timestamp.toString());
