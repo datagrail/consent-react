@@ -120,6 +120,20 @@ describe('ConfigService', () => {
       expect(essential.showTrackingDetailsLink).toBe(false);
     });
 
+    it('should convert essential_label to essentialLabel on category translations', () => {
+      const config = ConfigService.parseConfig(testConfigJson);
+      const layer = config.layout.consentLayers['26259ccb-e5e0-4305-b696-fa2b7413c239'];
+      const categoryElement = layer.elements.find(
+        (e) => e.type === 'ConsentLayerCategoryElement',
+      );
+
+      const essential = categoryElement!.consentLayerCategories![0];
+      expect(essential.translations['en'].essentialLabel).toBe('Always On');
+      expect(essential.translations['bg'].essentialLabel).toBe('Винаги включен');
+      expect(essential.translations['hr'].essentialLabel).toBe('Uvijek uključen');
+      expect(essential.translations['bg'].name).toBe('От съществено значение');
+    });
+
     it('should handle tracking_details_link_translations as array', () => {
       const config = ConfigService.parseConfig(testConfigJson);
       const layer = config.layout.consentLayers['26259ccb-e5e0-4305-b696-fa2b7413c239'];

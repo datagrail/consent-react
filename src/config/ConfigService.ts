@@ -1,4 +1,5 @@
 import type {
+  CategoryTranslation,
   ConsentConfig,
   ConsentLayer,
   ConsentLayerCategory,
@@ -202,7 +203,7 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
         gtmKey: cat.gtm_key,
         uuids: cat.uuids,
         cookiePatterns: cat.cookie_patterns,
-        translations: cat.translations as Record<string, { id?: string; locale?: string; name?: string; description?: string; essentialLabel?: string; trackingDetailsLink?: string }>,
+        translations: parseCategoryTranslations(cat.translations),
         showTrackingDetailsLink: cat.show_tracking_details_link,
       }),
     );
@@ -244,6 +245,28 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
   }
 
   return element;
+}
+
+/**
+ * Convert per-locale category translation objects (snake_case wire keys)
+ * to CategoryTranslation (camelCase). `id`, `locale`, `name`, `description`
+ * pass through unchanged; `essential_label`/`tracking_details_link` are renamed.
+ */
+function parseCategoryTranslations(
+  raw: Record<string, Record<string, string | null | undefined>>,
+): Record<string, CategoryTranslation> {
+  const result: Record<string, CategoryTranslation> = {};
+  for (const [locale, t] of Object.entries(raw)) {
+    result[locale] = {
+      id: t.id ?? undefined,
+      locale: t.locale ?? undefined,
+      name: t.name ?? undefined,
+      description: t.description ?? undefined,
+      essentialLabel: t.essential_label ?? undefined,
+      trackingDetailsLink: t.tracking_details_link ?? undefined,
+    };
+  }
+  return result;
 }
 
 /**
