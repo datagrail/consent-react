@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Dimensions,
   AccessibilityInfo,
-  Platform,
 } from 'react-native';
 import type {
   BannerProps,
@@ -39,7 +38,20 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
   const [reduceMotion, setReduceMotion] = useState(false);
   const animValue = useRef(new Animated.Value(0)).current;
 
-  const resolvedLocale = locale ?? Platform.select({ ios: 'en', android: 'en', default: 'en' });
+  // No device-locale detection: React Native has no zero-dependency API for
+  // reading the device locale, so we default to 'en'. Add real detection if a
+  // locale library is ever pulled in.
+  const resolvedLocale = locale ?? 'en';
+
+  const initializeCategoryState = useCallback((cfg: ConsentConfig) => {
+    const categories = findAllCategories(cfg);
+    const initialState: Record<string, boolean> = {};
+    const initialEnabled = cfg.initialCategories.initial;
+    for (const category of categories) {
+      initialState[category.gtmKey] = category.alwaysOn || initialEnabled.includes(category.gtmKey);
+    }
+    setEnabledCategories(initialState);
+  }, []);
 
   // Initialize layer state from config
   useEffect(() => {
@@ -48,7 +60,7 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
       initializeCategoryState(config);
       setVisible(true);
     }
-  }, [config]);
+  }, [config, initializeCategoryState]);
 
   // Check reduce motion preference
   useEffect(() => {
@@ -73,16 +85,6 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
       }
     }
   }, [visible, reduceMotion, animValue]);
-
-  const initializeCategoryState = useCallback((cfg: ConsentConfig) => {
-    const categories = findAllCategories(cfg);
-    const initialState: Record<string, boolean> = {};
-    const initialEnabled = cfg.initialCategories.initial;
-    for (const category of categories) {
-      initialState[category.gtmKey] = category.alwaysOn || initialEnabled.includes(category.gtmKey);
-    }
-    setEnabledCategories(initialState);
-  }, []);
 
   const handleButtonAction = useCallback(async (action: ButtonAction, element: ConsentLayerElement) => {
     switch (action) {

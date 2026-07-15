@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-DataGrail React Native Consent SDK — `@datagrail/react-native-consent`. Open-source (MIT), TypeScript-first privacy consent management for React Native 0.76+ (New Architecture only — TurboModules/Fabric).
+DataGrail React Native Consent SDK — `@datagrail/react-native-consent`. Open-source (Apache License, Version 2.0), TypeScript-first privacy consent management for React Native 0.76+ (New Architecture only — TurboModules/Fabric).
 
 Feature parity with `consent-ios` (Swift) and `consent-android` (Kotlin) native SDKs. Synchronous consent reads via MMKV, offline queue, exponential backoff retry, config-driven banner UI.
 
@@ -25,7 +25,6 @@ src/
 │   ├── RetryPolicy.ts          # Exponential backoff config (5 attempts, 250ms)
 │   └── OfflineQueue.ts         # Persist failed requests, drain on reconnect
 ├── consent/
-│   ├── ConsentState.ts         # Category→boolean model, version tracking
 │   ├── ConsentResolver.ts      # Merge config defaults with user prefs
 │   └── EventEmitter.ts         # Typed listener system
 ├── ui/
@@ -35,7 +34,9 @@ src/
 │   └── components/             # Buttons, toggles, text primitives
 ├── platform/
 │   ├── att.ios.ts              # ATT native module bridge (iOS)
-│   └── att.android.ts          # No-op (Android)
+│   ├── att.android.ts          # No-op (Android)
+│   ├── att.ts                  # No-op fallback (other/unresolved platforms)
+│   └── attShared.ts            # Shared ATT status → consent mapping
 └── webview/
     └── WebViewConsent.ts       # Consent payload for webview injection
 ```
@@ -62,16 +63,26 @@ npm run build                 # Build with react-native-builder-bob
 
 ## API Contracts
 
-All public API matches native SDKs:
+All public API matches native SDKs (see `src/index.ts` for the full export list):
 - `initialize(config: DataGrailConfig): Promise<void>`
+- `showBanner(): void` — UI trigger no-op; actual display is the `Banner` component's job
 - `isCategoryEnabled(category: string): boolean` — synchronous
 - `getPreferences(): ConsentPreferences | null` — synchronous
+- `getCategories(): ConsentPreferences | null` — saved prefs, or config defaults if unset
+- `getConfig(): ConsentConfig | null` — cached raw config
 - `savePreferences(prefs: ConsentPreferences): Promise<void>`
 - `acceptAll(): Promise<void>`
 - `rejectAll(): Promise<void>`
 - `needsConsent(): boolean`
 - `onConsentChanged(listener): Unsubscribe`
 - `reset(): void`
+- `hasUserConsent(): boolean`
+- `retryPendingRequests(): Promise<{ success: number; failed: number }>` — drains `OfflineQueue`
+- `trackBannerShown(): Promise<void>` — hits `save_open`
+
+Also exported: `requestTrackingAuthorization`/`getTrackingStatus` (ATT, `src/platform/att*.ts`),
+`getConsentPayloadForWebView`/`getConsentInjectionScript` (`src/webview/WebViewConsent.ts`), and
+the `Banner`/`PreferenceCenter` UI components.
 
 ## Backend Endpoints
 

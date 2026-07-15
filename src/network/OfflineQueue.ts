@@ -90,12 +90,29 @@ export class OfflineQueue {
 
   private loadQueue(): QueuedRequest[] {
     const events = this.storage.loadPendingEvents();
-    return events as QueuedRequest[];
+    return events.filter(isQueuedRequest);
   }
 
   private saveQueue(queue: QueuedRequest[]): void {
     this.storage.savePendingEvents(queue);
   }
+}
+
+/**
+ * Type guard for stored queue items — drops malformed entries instead of
+ * letting them poison-pill drain() (a bad `.options` would make
+ * `network.request()` throw, and the catch in drain() would requeue it forever).
+ */
+function isQueuedRequest(item: unknown): item is QueuedRequest {
+  if (typeof item !== 'object' || item === null) return false;
+  const candidate = item as Record<string, unknown>;
+  if (typeof candidate.id !== 'string') return false;
+  if (typeof candidate.queuedAt !== 'string') return false;
+  if (typeof candidate.endpoint !== 'string') return false;
+  if (typeof candidate.options !== 'object' || candidate.options === null) return false;
+  const options = candidate.options as Record<string, unknown>;
+  if (typeof options.url !== 'string') return false;
+  return true;
 }
 
 /**

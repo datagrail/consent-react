@@ -1,8 +1,7 @@
 import { NativeModules } from 'react-native';
-import type { ATTStatus, ConsentPreferences, CategoryConsent } from '../types';
+import type { ATTStatus } from '../types';
 import { getPreferences, savePreferences } from '../ConsentManager';
-
-const MARKETING_GTM_KEY = 'dg-category-marketing';
+import { mapATTStatusToConsent } from './attShared';
 
 interface DataGrailConsentATTModule {
   requestTrackingAuthorization(): Promise<ATTStatus>;
@@ -17,36 +16,6 @@ function getNativeModule(): DataGrailConsentATTModule {
     );
   }
   return module;
-}
-
-function mapATTStatusToConsent(
-  status: ATTStatus,
-  currentPreferences: ConsentPreferences | null,
-): ConsentPreferences | null {
-  if (status === 'notDetermined' || status === 'restricted') {
-    return null;
-  }
-
-  const isMarketingEnabled = status === 'authorized';
-
-  const existingOptions: CategoryConsent[] = currentPreferences?.cookieOptions ?? [];
-
-  const hasMarketing = existingOptions.some(
-    (opt) => opt.gtmKey === MARKETING_GTM_KEY,
-  );
-
-  const updatedOptions: CategoryConsent[] = hasMarketing
-    ? existingOptions.map((opt) =>
-        opt.gtmKey === MARKETING_GTM_KEY
-          ? { gtmKey: opt.gtmKey, isEnabled: isMarketingEnabled }
-          : opt,
-      )
-    : [...existingOptions, { gtmKey: MARKETING_GTM_KEY, isEnabled: isMarketingEnabled }];
-
-  return {
-    isCustomised: true,
-    cookieOptions: updatedOptions,
-  };
 }
 
 /**

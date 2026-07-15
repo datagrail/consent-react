@@ -2,7 +2,8 @@ import { OfflineQueue } from '../../src/network/OfflineQueue';
 import { StorageService } from '../../src/storage/StorageService';
 import { NetworkService } from '../../src/network/NetworkService';
 import { ConsentError } from '../../src/types';
-import { __resetAllStores } from 'react-native-mmkv';
+import { STORAGE_KEYS } from '../../src/storage/keys';
+import { MMKV, __resetAllStores } from 'react-native-mmkv';
 
 describe('OfflineQueue', () => {
   let storage: StorageService;
@@ -144,6 +145,34 @@ describe('OfflineQueue', () => {
         'https://api.example.com/second',
         'https://api.example.com/third',
       ]);
+    });
+  });
+
+  describe('malformed queue entries', () => {
+    it('drops a malformed stored item instead of retrying it forever', async () => {
+      // Seed storage directly with a mix of a valid item and malformed ones,
+      // bypassing enqueue() to simulate corrupted/unexpected persisted data.
+      const raw = new MMKV({ id: 'offline-queue-test' });
+      raw.set(
+        STORAGE_KEYS.PENDING_EVENTS,
+        JSON.stringify([
+          { id: 'good', options: { url: 'https://api.example.com/save' }, queuedAt: 't', endpoint: '/save' },
+          { id: 'missing-options', queuedAt: 't', endpoint: '/save' },
+          { id: 'options-not-object', options: 'nope', queuedAt: 't', endpoint: '/save' },
+          { id: 'options-missing-url', options: {}, queuedAt: 't', endpoint: '/save' },
+          'not-even-an-object',
+        ]),
+      );
+
+      const mockHeaders = new Map<string, string>();
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 200,
+        text: () => Promise.resolve(''),
+        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      });
+
+      await expect(queue.drain()).resolves.toEqual({ success: 1, failed: 0 });
+      expect(queue.getPendingCount()).toBe(0);
     });
   });
 
