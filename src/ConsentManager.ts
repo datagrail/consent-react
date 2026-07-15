@@ -200,7 +200,7 @@ export function reset(): void {
 
 export function hasUserConsent(): boolean {
   assertInitialized();
-  return storageService!.loadPreferences() !== null;
+  return storageService!.hasUserConsented();
 }
 
 export async function retryPendingRequests(): Promise<{ success: number; failed: number }> {

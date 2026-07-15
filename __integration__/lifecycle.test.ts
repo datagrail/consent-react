@@ -64,8 +64,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     expect(config).not.toBeNull();
     expect(config!.dgCustomerId).toBe('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
 
-    // 3. Check initial consent state — defaults from initialCategories
-    expect(hasUserConsent()).toBe(true);
+    // 3. Category reads use the auto-persisted defaults immediately, but the
+    // user hasn't actually consented to anything yet.
+    expect(hasUserConsent()).toBe(false);
     expect(isCategoryEnabled('dg-category-essential')).toBe(true);
     expect(isCategoryEnabled('dg-category-marketing')).toBe(true);
     expect(isCategoryEnabled('dg-category-mystery-category')).toBe(false);
@@ -95,8 +96,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
 
     await savePreferences(customPrefs);
 
-    // 5. Verify preferences are persisted
+    // 5. Verify preferences are persisted, and real consent is now recorded
     expect(getPreferences()).toEqual(customPrefs);
+    expect(hasUserConsent()).toBe(true);
     expect(isCategoryEnabled('dg-category-essential')).toBe(true);
     expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
     expect(isCategoryEnabled('dg-category-performance')).toBe(true);

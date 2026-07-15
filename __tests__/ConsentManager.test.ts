@@ -356,9 +356,28 @@ describe('ConsentManager', () => {
       expect(() => hasUserConsent()).toThrow(ConsentError);
     });
 
-    it('should return true after initialization (defaults are saved)', async () => {
+    it('should return false after a bare initialization (auto-persisted defaults are not real consent)', async () => {
       mockFetchSuccess();
       await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+      expect(hasUserConsent()).toBe(false);
+    });
+
+    it('should return true after the user actually saves preferences', async () => {
+      mockFetchSuccess();
+      await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+      const mockHeaders = new Map<string, string>();
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 200,
+        text: () => Promise.resolve(''),
+        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      });
+
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [{ gtmKey: 'dg-category-essential', isEnabled: true }],
+      });
 
       expect(hasUserConsent()).toBe(true);
     });
