@@ -88,8 +88,7 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
 
   const handleButtonAction = useCallback(async (action: ButtonAction, element: ConsentLayerElement) => {
     switch (action) {
-      case 'accept_all':
-      case 'custom': {
+      case 'accept_all': {
         await ConsentManager.acceptAll();
         const prefs = ConsentManager.getPreferences();
         if (prefs && onConsentSaved) {
@@ -107,7 +106,8 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
         setVisible(false);
         break;
       }
-      case 'save_preferences': {
+      case 'save_preferences':
+      case 'custom': {
         const preferences: ConsentPreferences = {
           isCustomised: true,
           cookieOptions: Object.entries(enabledCategories).map(([gtmKey, isEnabled]) => ({
