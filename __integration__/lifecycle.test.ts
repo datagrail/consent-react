@@ -20,7 +20,8 @@ import {
 } from '../src/ConsentManager';
 import { ConsentError } from '../src/types';
 import type { ConsentPreferences } from '../src/types';
-import { __resetAllStores } from 'react-native-mmkv';
+import { MMKV, __resetAllStores } from 'react-native-mmkv';
+import { STORAGE_KEYS } from '../src/storage/keys';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -279,9 +280,17 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
 
     expect(needsConsent()).toBe(false);
 
-    // Re-init with a bumped config version, without clearing storage — simulates the
-    // backend publishing a new config version on top of the user's existing consent.
-    reset();
+    // Re-init with a bumped config version, without resetting — simulates the app
+    // relaunching and the backend serving a new config version on top of the
+    // user's existing consent (no reset() call, so preferences/consent are
+    // untouched). ConfigService caches the fetched config, and its
+    // stale-while-revalidate path always returns the cached config
+    // synchronously — even past the TTL — so the cache has to be evicted
+    // directly for this second initialize() to actually pick up the new
+    // version instead of replaying the old cached one.
+    const cacheStorage = new MMKV({ id: 'datagrail-consent' });
+    cacheStorage.delete(STORAGE_KEYS.CONFIG_CACHE);
+    cacheStorage.delete(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP);
 
     const newConfig = JSON.parse(testConfigJson);
     newConfig.showBanner = true;
