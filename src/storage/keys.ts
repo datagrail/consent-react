@@ -16,4 +16,4 @@ export const STORAGE_KEYS = {
   USER_CONSENTED: 'datagrail_consent_user_consented',
 } as const;
 
-export const CURRENT_SCHEMA_VERSION = 1;
+export const CURRENT_SCHEMA_VERSION = 2;

@@ -32,4 +32,25 @@ describe('migrations', () => {
     expect(storage2.loadPreferences()).toBeNull();
     expect(storage2.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
   });
+
+  it('should backfill USER_CONSENTED for a v1 install that already had saved preferences', () => {
+    const storage = new StorageService('migration-v1-consented');
+    storage.savePreferences({ isCustomised: true, cookieOptions: [] });
+    // Simulate a pre-USER_CONSENTED (v1) install: real consent existed, but
+    // the flag introduced in v2 was never set.
+    storage.setSchemaVersion(1);
+
+    const storage2 = new StorageService('migration-v1-consented');
+    expect(storage2.hasUserConsented()).toBe(true);
+    expect(storage2.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
+
+  it('should not set USER_CONSENTED for a v1 install with no saved preferences', () => {
+    const storage = new StorageService('migration-v1-unconsented');
+    storage.setSchemaVersion(1);
+
+    const storage2 = new StorageService('migration-v1-unconsented');
+    expect(storage2.hasUserConsented()).toBe(false);
+    expect(storage2.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+  });
 });
