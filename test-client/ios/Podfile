@@ -37,5 +37,18 @@ target 'ConsentTestClient' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # fmt 11.0.2 (pinned by RN 0.76) uses a consteval format-string check that
+    # newer Clang (Xcode 26+) rejects under C++20. fmt's own FMT_USE_CONSTEVAL
+    # detection (base.h) falls back to the pre-consteval path under C++17, and
+    # that macro is unconditionally #define'd so a -D override gets clobbered
+    # — building this one pod target as C++17 is the reliable lever.
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |bc|
+          bc.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
+      end
+    end
   end
 end
