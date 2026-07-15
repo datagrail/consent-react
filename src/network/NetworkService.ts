@@ -43,7 +43,7 @@ export class NetworkService {
       const data = await response.text();
 
       const responseHeaders: Record<string, string> = {};
-      response.headers.forEach((value, key) => {
+      response.headers.forEach((value: string, key: string) => {
         responseHeaders[key] = value;
       });
 
