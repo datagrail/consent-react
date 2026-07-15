@@ -40,16 +40,12 @@ export async function retryWithBackoff<T extends NetworkResponse>(
   operation: () => Promise<T>,
   config: RetryConfig = DEFAULT_RETRY_CONFIG,
 ): Promise<T> {
-  let lastError: unknown;
-  let lastResponse: T | undefined;
-
   for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
     try {
       const response = await operation();
 
       // If response status is retryable (5xx), retry
       if (isRetryableStatusCode(response.status) && attempt < config.maxAttempts) {
-        lastResponse = response;
         await delay(getBackoffDelay(attempt, config.baseDelayMs));
         continue;
       }
@@ -57,8 +53,6 @@ export async function retryWithBackoff<T extends NetworkResponse>(
       // 4xx or 2xx — return immediately (never retry 4xx)
       return response;
     } catch (error: unknown) {
-      lastError = error;
-
       // Only retry on retryable errors
       if (!isRetryableError(error) || attempt === config.maxAttempts) {
         throw error;
@@ -68,13 +62,11 @@ export async function retryWithBackoff<T extends NetworkResponse>(
     }
   }
 
-  // If we exhausted retries due to 5xx responses, return the last response
-  if (lastResponse !== undefined) {
-    return lastResponse;
-  }
-
-  // Should not reach here, but throw last error as safety net
-  throw lastError;
+  // Unreachable: every iteration either returns, throws, or continues (and
+  // continue only happens when attempt < maxAttempts, so the loop always
+  // returns/throws by the final attempt). Kept only to satisfy TypeScript's
+  // control-flow analysis, which can't prove the loop always exits above.
+  throw new Error('unreachable: retryWithBackoff exhausted attempts without returning or throwing');
 }
 
 function delay(ms: number): Promise<void> {
