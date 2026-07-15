@@ -15,7 +15,13 @@ config.resolver.nodeModulesPaths = [
   path.resolve(sdkRoot, 'node_modules'),
 ];
 
-// Prevent duplicate React instances
+// Prevent duplicate React instances. extraNodeModules alone isn't enough —
+// nodeModulesPaths still lets Metro's hierarchical lookup find the SDK's own
+// node_modules/react for imports made from inside sdkRoot (watched via
+// watchFolders), pulling in a second React copy and breaking hooks
+// ("Cannot read property 'useState' of null"). Disabling hierarchical lookup
+// forces every resolution through nodeModulesPaths/extraNodeModules above.
+config.resolver.disableHierarchicalLookup = true;
 config.resolver.extraNodeModules = {
   react: path.resolve(projectRoot, 'node_modules/react'),
   'react-native': path.resolve(projectRoot, 'node_modules/react-native'),

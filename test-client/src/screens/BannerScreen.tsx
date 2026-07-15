@@ -210,7 +210,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     backgroundColor: '#fafafa',
-    minHeight: 200,
+    // Banner renders as a position: absolute overlay, so it doesn't grow this
+    // container — a short minHeight clips real configs with more than a
+    // couple of buttons/categories (confirmed manually against a live config).
+    minHeight: 700,
     marginBottom: 16,
   },
   bottomPad: {
