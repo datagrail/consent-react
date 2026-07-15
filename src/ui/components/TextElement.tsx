@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { Text } from 'react-native';
 import type { BannerTheme } from '../theme';
 
 interface TextElementProps {
@@ -52,6 +52,3 @@ function getTextStyle(
       };
   }
 }
-
-const _styles = StyleSheet.create({});
-void _styles;
