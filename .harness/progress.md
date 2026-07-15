@@ -2,7 +2,10 @@
 
 ## Status: COMPLETE — All 16/16 features passing
 
-## Test Results: 216 tests passing (19 suites)
+## Test Results: 227 tests passing (21 suites), plus 9 integration tests passing (1 suite)
+<!-- As of TRUST-2313 (cleanup bundle) in this worktree only. Other tickets are being fixed in
+     parallel in separate worktrees, so this count will need another update once all branches
+     are merged together. -->
 
 | ID | Agent | Description | Status |
 |----|-------|-------------|--------|

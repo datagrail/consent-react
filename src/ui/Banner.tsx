@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Dimensions,
   AccessibilityInfo,
-  Platform,
 } from 'react-native';
 import type {
   BannerProps,
@@ -39,7 +38,9 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
   const [reduceMotion, setReduceMotion] = useState(false);
   const animValue = useRef(new Animated.Value(0)).current;
 
-  const resolvedLocale = locale ?? Platform.select({ ios: 'en', android: 'en', default: 'en' });
+  // ponytail: no device-locale detection (RN has no zero-dependency API for it); defaults to
+  // 'en', add real detection if a locale library is ever pulled in.
+  const resolvedLocale = locale ?? 'en';
 
   const initializeCategoryState = useCallback((cfg: ConsentConfig) => {
     const categories = findAllCategories(cfg);

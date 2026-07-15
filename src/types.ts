@@ -240,7 +240,7 @@ export interface BannerProps {
   onConsentSaved?: (preferences: ConsentPreferences) => void;
   /** Called when banner is dismissed without saving */
   onDismiss?: () => void;
-  /** Override locale (default: device locale) */
+  /** Override locale (default: 'en' — device locale detection is not implemented) */
   locale?: string;
   /** Override display style */
   displayStyle?: 'modal' | 'fullScreen';
@@ -251,7 +251,7 @@ export interface PreferenceCenterProps {
   onSave?: (preferences: ConsentPreferences) => void;
   /** Called when user cancels */
   onCancel?: () => void;
-  /** Override locale */
+  /** Override locale (default: 'en' — device locale detection is not implemented) */
   locale?: string;
   /** Show tracking details expansion */
   showTrackingDetails?: boolean;

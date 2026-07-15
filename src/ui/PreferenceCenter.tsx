@@ -6,7 +6,6 @@ import {
   Switch,
   TouchableOpacity,
   StyleSheet,
-  Platform,
 } from 'react-native';
 import type {
   PreferenceCenterProps,
@@ -30,7 +29,9 @@ export function PreferenceCenter({
 }: PreferenceCenterProps): React.ReactElement {
   const config = ConsentManager.getConfig();
   const theme = useTheme(config);
-  const resolvedLocale = locale ?? Platform.select({ ios: 'en', android: 'en', default: 'en' });
+  // ponytail: no device-locale detection (RN has no zero-dependency API for it); defaults to
+  // 'en', add real detection if a locale library is ever pulled in.
+  const resolvedLocale = locale ?? 'en';
 
   const categories = useMemo(() => {
     if (!config) return [];
