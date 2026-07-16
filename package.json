@@ -75,7 +75,7 @@
   "dependencies": {
     "react-native-get-random-values": "^1.11.0",
     "react-native-mmkv": "^3.0.0",
-    "uuid": "^11.0.1"
+    "uuid": "^14.0.0"
   },
   "jest": {
     "preset": "react-native",
