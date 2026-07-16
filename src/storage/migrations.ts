@@ -26,9 +26,23 @@ export function runMigrations(storage: StorageService): void {
   }
 
   // Run migrations sequentially from currentVersion to CURRENT_SCHEMA_VERSION
-  // Currently no migrations exist (schema version 1 is the initial version).
-  // Future migrations would be added here:
-  // if (currentVersion < 2) { migrateV1ToV2(storage); }
+  if (currentVersion < 2) {
+    migrateV1ToV2(storage);
+  }
 
   storage.setSchemaVersion(CURRENT_SCHEMA_VERSION);
+}
+
+/**
+ * v1 -> v2: USER_CONSENTED was introduced in v2 to distinguish real consent
+ * from init's auto-persisted defaults. An install upgrading from v1 has no
+ * USER_CONSENTED flag yet, but if it has saved preferences, that *was* real
+ * consent under v1's semantics (v1 had no auto-persist-without-consent step)
+ * — backfill the flag so needsConsent()/hasUserConsent() don't treat an
+ * already-consented install as needing reconsent.
+ */
+function migrateV1ToV2(storage: StorageService): void {
+  if (storage.loadPreferences() !== null) {
+    storage.setUserConsented(true);
+  }
 }

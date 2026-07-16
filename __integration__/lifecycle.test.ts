@@ -20,7 +20,8 @@ import {
 } from '../src/ConsentManager';
 import { ConsentError } from '../src/types';
 import type { ConsentPreferences } from '../src/types';
-import { __resetAllStores } from 'react-native-mmkv';
+import { MMKV, __resetAllStores } from 'react-native-mmkv';
+import { STORAGE_KEYS } from '../src/storage/keys';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -63,8 +64,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     expect(config).not.toBeNull();
     expect(config!.dgCustomerId).toBe('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
 
-    // 3. Check initial consent state — defaults from initialCategories
-    expect(hasUserConsent()).toBe(true);
+    // 3. Category reads use the auto-persisted defaults immediately, but the
+    // user hasn't actually consented to anything yet.
+    expect(hasUserConsent()).toBe(false);
     expect(isCategoryEnabled('dg-category-essential')).toBe(true);
     expect(isCategoryEnabled('dg-category-marketing')).toBe(true);
     expect(isCategoryEnabled('dg-category-mystery-category')).toBe(false);
@@ -94,8 +96,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
 
     await savePreferences(customPrefs);
 
-    // 5. Verify preferences are persisted
+    // 5. Verify preferences are persisted, and real consent is now recorded
     expect(getPreferences()).toEqual(customPrefs);
+    expect(hasUserConsent()).toBe(true);
     expect(isCategoryEnabled('dg-category-essential')).toBe(true);
     expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
     expect(isCategoryEnabled('dg-category-performance')).toBe(true);
@@ -262,7 +265,10 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     mockFetchSuccess(JSON.stringify(configWithBanner));
     await initialize({ configUrl: 'https://cdn.example.com/config.json' });
 
-    // Save prefs (sets version to match)
+    // Fresh init, no real consent yet — banner must show
+    expect(needsConsent()).toBe(true);
+
+    // Save prefs (real user consent, sets version to match)
     const mockHeaders = new Map<string, string>();
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
@@ -276,9 +282,17 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
 
     expect(needsConsent()).toBe(false);
 
-    // Now re-init with a different config version
-    reset();
-    __resetAllStores();
+    // Re-init with a bumped config version, without resetting — simulates the app
+    // relaunching and the backend serving a new config version on top of the
+    // user's existing consent (no reset() call, so preferences/consent are
+    // untouched). ConfigService caches the fetched config, and its
+    // stale-while-revalidate path always returns the cached config
+    // synchronously — even past the TTL — so the cache has to be evicted
+    // directly for this second initialize() to actually pick up the new
+    // version instead of replaying the old cached one.
+    const cacheStorage = new MMKV({ id: 'datagrail-consent' });
+    cacheStorage.delete(STORAGE_KEYS.CONFIG_CACHE);
+    cacheStorage.delete(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP);
 
     const newConfig = JSON.parse(testConfigJson);
     newConfig.showBanner = true;
@@ -286,9 +300,23 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     mockFetchSuccess(JSON.stringify(newConfig));
     await initialize({ configUrl: 'https://cdn.example.com/config.json' });
 
-    // Since storage was cleared and re-initialized, defaults are saved
-    // needsConsent checks if saved version matches current
-    expect(needsConsent()).toBe(false);
+    // Prior real consent exists but for an old config version — reconsent required.
+    expect(needsConsent()).toBe(true);
+  });
+
+  it('needsConsent returns true on a genuine first run after a full reset', async () => {
+    const configWithBanner = JSON.parse(testConfigJson);
+    configWithBanner.showBanner = true;
+    mockFetchSuccess(JSON.stringify(configWithBanner));
+    await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+    reset();
+    __resetAllStores();
+
+    mockFetchSuccess(JSON.stringify(configWithBanner));
+    await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+    expect(needsConsent()).toBe(true);
   });
 
   it('persists consent ID across sessions (re-initialization)', async () => {

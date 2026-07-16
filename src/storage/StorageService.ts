@@ -1,3 +1,7 @@
+// Must be imported before `uuid` — installs crypto.getRandomValues, which
+// Hermes doesn't provide natively, so uuid's v4() has a secure RNG to use.
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
 import { MMKV } from 'react-native-mmkv';
 import type { ConsentPreferences, ConsentConfig } from '../types';
 import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
@@ -32,7 +36,7 @@ export class StorageService {
   getOrCreateUniqueId(): string {
     const existing = this.storage.getString(STORAGE_KEYS.UNIQUE_ID);
     if (existing !== undefined) return existing;
-    const id = generateUUID();
+    const id = uuidv4();
     this.storage.set(STORAGE_KEYS.UNIQUE_ID, id);
     return id;
   }
@@ -43,6 +47,14 @@ export class StorageService {
 
   loadConfigVersion(): string | null {
     return this.storage.getString(STORAGE_KEYS.VERSION) ?? null;
+  }
+
+  setUserConsented(value: boolean): void {
+    this.storage.set(STORAGE_KEYS.USER_CONSENTED, value);
+  }
+
+  hasUserConsented(): boolean {
+    return this.storage.getBoolean(STORAGE_KEYS.USER_CONSENTED) ?? false;
   }
 
   saveConfigCache(config: ConsentConfig, timestamp: number): void {
@@ -94,16 +106,4 @@ export class StorageService {
     this.storage.clearAll();
     this.storage.set(STORAGE_KEYS.SCHEMA_VERSION, CURRENT_SCHEMA_VERSION.toString());
   }
-}
-
-/**
- * Generate a v4 UUID without crypto dependency.
- * Uses Math.random() which is sufficient for consent tracking IDs.
- */
-function generateUUID(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }

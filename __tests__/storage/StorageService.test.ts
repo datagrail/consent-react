@@ -1,4 +1,5 @@
 import { StorageService } from '../../src/storage/StorageService';
+import { CURRENT_SCHEMA_VERSION } from '../../src/storage/keys';
 import type { ConsentPreferences, ConsentConfig } from '../../src/types';
 import { __resetAllStores } from 'react-native-mmkv';
 
@@ -159,20 +160,18 @@ describe('StorageService', () => {
 
     it('should set schema version after clear', () => {
       storage.clearAll();
-      expect(storage.getSchemaVersion()).toBe(1);
+      expect(storage.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
     });
   });
 
   describe('schema version', () => {
     it('should get and set schema version', () => {
-      storage.setSchemaVersion(5);
-      expect(storage.getSchemaVersion()).toBe(5);
+      storage.setSchemaVersion(CURRENT_SCHEMA_VERSION + 4);
+      expect(storage.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION + 4);
     });
 
-    it('should return 0 for unset schema version', () => {
-      // After construction, migrations run and set it to 1
-      // Use a fresh MMKV to test the raw method
-      expect(storage.getSchemaVersion()).toBe(1);
+    it('should return the current schema version after construction (migrations already ran)', () => {
+      expect(storage.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
     });
   });
 });

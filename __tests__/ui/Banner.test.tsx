@@ -333,6 +333,47 @@ describe('Banner', () => {
     });
   });
 
+  it('saves customized toggles (not acceptAll) on custom action', async () => {
+    const configWithCustomAction: ConsentConfig = {
+      ...testConfig,
+      layout: {
+        ...testConfig.layout,
+        consentLayers: {
+          ...testConfig.layout.consentLayers,
+          'layer-second': {
+            ...testConfig.layout.consentLayers['layer-second']!,
+            elements: testConfig.layout.consentLayers['layer-second']!.elements.map((element) =>
+              element.id === 'el-save' ? { ...element, buttonAction: 'custom' } : element,
+            ),
+          },
+        },
+      },
+    };
+    ConsentManager.getConfig.mockReturnValue(configWithCustomAction);
+
+    const onConsentSaved = jest.fn();
+    const { getByText, getByLabelText } = render(<Banner locale="en" onConsentSaved={onConsentSaved} />);
+
+    // Navigate to second layer and turn off the marketing category
+    fireEvent.press(getByText('Manage Preferences'));
+    fireEvent(getByLabelText('Marketing: enabled'), 'valueChange', false);
+    fireEvent.press(getByText('Save Preferences'));
+
+    await waitFor(() => {
+      expect(ConsentManager.acceptAll).not.toHaveBeenCalled();
+      expect(ConsentManager.savePreferences).toHaveBeenCalledTimes(1);
+      const savedPrefs = ConsentManager.savePreferences.mock.calls[0][0] as ConsentPreferences;
+      expect(savedPrefs.isCustomised).toBe(true);
+      expect(savedPrefs.cookieOptions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ gtmKey: 'dg-category-essential', isEnabled: true }),
+          expect.objectContaining({ gtmKey: 'dg-category-marketing', isEnabled: false }),
+        ]),
+      );
+      expect(onConsentSaved).toHaveBeenCalledWith(savedPrefs);
+    });
+  });
+
   it('renders accessibility labels on buttons', () => {
     const { getByLabelText } = render(<Banner locale="en" />);
     expect(getByLabelText('Accept All')).toBeTruthy();
