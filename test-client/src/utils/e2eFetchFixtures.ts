@@ -1,5 +1,5 @@
 import testConfig from './test-config.json';
-import { DEFAULT_CONFIG_URL } from './mockConfig';
+import { DEFAULT_CONFIG_URL, STAGING_HOST } from './mockConfig';
 
 type FetchLike = typeof fetch;
 
@@ -45,8 +45,8 @@ export function installE2EFetchFixtures(): void {
     }
 
     if (
-      url.startsWith('https://api.consentjs.datagrailstaging.com/save_preferences') ||
-      url.startsWith('https://api.consentjs.datagrailstaging.com/save_open')
+      url.startsWith(`${STAGING_HOST}/save_preferences`) ||
+      url.startsWith(`${STAGING_HOST}/save_open`)
     ) {
       return Promise.resolve(makeResponse(200, '{}'));
     }
