@@ -131,47 +131,50 @@ describe('Banner Snapshots', () => {
     });
   });
 
+  // The banner mounts hidden and flips to visible in an effect, then runs its
+  // entrance animation. Capture the tree only after mount effects have
+  // committed and timers have flushed — grabbing toJSON() inside the create()
+  // act() would snapshot the initial null render before `visible` is set.
+  function renderBannerTree(): renderer.ReactTestRendererJSON | renderer.ReactTestRendererJSON[] {
+    let component!: renderer.ReactTestRenderer;
+    act(() => {
+      component = renderer.create(<Banner locale="en" />);
+    });
+    act(() => {
+      jest.runAllTimers();
+    });
+    const tree = component.toJSON();
+    if (tree == null) {
+      throw new Error('Banner rendered null; expected a visible dialog to snapshot');
+    }
+    return tree;
+  }
+
   it('renders with bottom position', () => {
     const config = makeConfig({ position: 'bottom', showCloseButton: true });
     ConsentManager.getConfig.mockReturnValue(config);
 
-    let tree: renderer.ReactTestRendererJSON | renderer.ReactTestRendererJSON[] | null = null;
-    act(() => {
-      tree = renderer.create(<Banner locale="en" />).toJSON();
-    });
-    expect(tree).toMatchSnapshot();
+    expect(renderBannerTree()).toMatchSnapshot();
   });
 
   it('renders with center position', () => {
     const config = makeConfig({ position: 'center', showCloseButton: true });
     ConsentManager.getConfig.mockReturnValue(config);
 
-    let tree: renderer.ReactTestRendererJSON | renderer.ReactTestRendererJSON[] | null = null;
-    act(() => {
-      tree = renderer.create(<Banner locale="en" />).toJSON();
-    });
-    expect(tree).toMatchSnapshot();
+    expect(renderBannerTree()).toMatchSnapshot();
   });
 
   it('renders with close button', () => {
     const config = makeConfig({ position: 'bottom', showCloseButton: true });
     ConsentManager.getConfig.mockReturnValue(config);
 
-    let tree: renderer.ReactTestRendererJSON | renderer.ReactTestRendererJSON[] | null = null;
-    act(() => {
-      tree = renderer.create(<Banner locale="en" />).toJSON();
-    });
-    expect(tree).toMatchSnapshot();
+    expect(renderBannerTree()).toMatchSnapshot();
   });
 
   it('renders without close button', () => {
     const config = makeConfig({ position: 'bottom', showCloseButton: false });
     ConsentManager.getConfig.mockReturnValue(config);
 
-    let tree: renderer.ReactTestRendererJSON | renderer.ReactTestRendererJSON[] | null = null;
-    act(() => {
-      tree = renderer.create(<Banner locale="en" />).toJSON();
-    });
-    expect(tree).toMatchSnapshot();
+    expect(renderBannerTree()).toMatchSnapshot();
   });
 });
