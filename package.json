@@ -31,7 +31,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:integration": "jest --config jest.integration.config.js",
-    "prepare": "echo skipping build"
+    "prepare": "bob build"
   },
   "keywords": [
     "react-native",
