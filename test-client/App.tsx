@@ -10,7 +10,12 @@ import { installE2EFetchFixtures } from './src/utils/e2eFetchFixtures';
 
 const Tab = createBottomTabNavigator();
 
-installE2EFetchFixtures();
+// Debug-only: the e2e fixtures permanently override global.fetch, so keep them
+// out of release builds where the real network implementation must be used.
+// Maestro flows run against debug builds, so e2e coverage is unaffected.
+if (__DEV__) {
+  installE2EFetchFixtures();
+}
 
 function TabIcon({ label }: { label: string }): React.JSX.Element {
   return <Text style={{ fontSize: 18 }}>{label}</Text>;
