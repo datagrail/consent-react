@@ -16,6 +16,8 @@ repos:
         args: [--fix=lf]
       - id: check-merge-conflict
       - id: check-yaml
+        # Maestro e2e flows are multi-document YAML (config header --- steps).
+        args: [--allow-multiple-documents]
       - id: check-json
         # Android gradlew/wrapper + generated native scaffold aren't ours to lint.
         exclude: '^test-client/android/'
