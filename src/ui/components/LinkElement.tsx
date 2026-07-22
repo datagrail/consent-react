@@ -31,6 +31,7 @@ export function LinkElement({ links, locale, theme }: LinkElementProps): React.R
             accessibilityLabel={text}
             accessibilityHint="Opens in your browser"
             style={styles.linkTouchable}
+            hitSlop={{ top: 11, bottom: 11, left: 4, right: 4 }}
           >
             <Text
               style={[styles.linkText, { color: theme.colors.link, fontSize: theme.fontSize.body }]}
