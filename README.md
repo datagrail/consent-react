@@ -340,6 +340,13 @@ By design, network failures for consent sync are non-blocking. Requests are queu
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
 
+### End-to-end tests
+
+The test client uses Maestro for Android and iOS end-to-end testing. See the
+[Maestro E2E guide](./test-client/e2e/README.md) for platform commands,
+individual flow execution, milestone screenshots, debug output, and JUnit
+report locations.
+
 ## License
 
 [Apache 2.0](./LICENSE)

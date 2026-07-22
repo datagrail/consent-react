@@ -1,16 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  Switch,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-} from 'react-native';
-import {
-  retryPendingRequests,
-  reset,
-} from '@datagrail/react-native-consent';
+import { View, Text, Switch, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { retryPendingRequests, reset } from '@datagrail/react-native-consent';
 import { ResultDisplay } from '../components/ResultDisplay';
 import type { ResultValue } from '../components/ResultDisplay';
 import { EventLog } from '../components/EventLog';
@@ -90,7 +80,9 @@ export function NetworkScreen(): React.JSX.Element {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Network Control Panel</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        Network Control Panel
+      </Text>
 
       {/* Offline Mode Toggle */}
       <View style={styles.card}>
@@ -102,6 +94,11 @@ export function NetworkScreen(): React.JSX.Element {
             </Text>
           </View>
           <Switch
+            testID="toggle-offline"
+            accessibilityRole="switch"
+            accessibilityLabel="Offline mode"
+            accessibilityHint="Simulates network unavailability in this test client"
+            accessibilityState={{ checked: offlineMode }}
             value={offlineMode}
             onValueChange={handleToggleOffline}
             trackColor={{ false: '#ccc', true: '#81c784' }}
@@ -110,28 +107,47 @@ export function NetworkScreen(): React.JSX.Element {
         </View>
         {offlineMode && (
           <View style={styles.warningBanner}>
-            <Text style={styles.warningText}>
-              OFFLINE MODE ACTIVE — requests will be queued
-            </Text>
+            <Text style={styles.warningText}>OFFLINE MODE ACTIVE — requests will be queued</Text>
           </View>
         )}
       </View>
 
       {/* Queue Controls */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Queue Management</Text>
+        <Text style={styles.cardTitle} accessibilityRole="header">
+          Queue Management
+        </Text>
 
-        <TouchableOpacity style={styles.button} onPress={handleQueueStatus}>
+        <TouchableOpacity
+          testID="btn-check-queue-status"
+          accessibilityRole="button"
+          accessibilityLabel="Check queue status"
+          style={styles.button}
+          onPress={handleQueueStatus}
+        >
           <Text style={styles.buttonText}>Check Queue Status</Text>
         </TouchableOpacity>
         <ResultDisplay label="Queue Status" result={results['status'] ?? null} />
 
-        <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleDrainQueue}>
+        <TouchableOpacity
+          testID="btn-drain-queue"
+          accessibilityRole="button"
+          accessibilityLabel="Drain queue"
+          style={[styles.button, styles.primaryButton]}
+          onPress={handleDrainQueue}
+        >
           <Text style={styles.buttonText}>Drain Queue</Text>
         </TouchableOpacity>
         <ResultDisplay label="Drain Queue" result={results['drain'] ?? null} />
 
-        <TouchableOpacity style={[styles.button, styles.dangerButton]} onPress={handleClearAll}>
+        <TouchableOpacity
+          testID="btn-clear-all-data"
+          accessibilityRole="button"
+          accessibilityLabel="Clear all data"
+          accessibilityHint="Resets all consent SDK data"
+          style={[styles.button, styles.dangerButton]}
+          onPress={handleClearAll}
+        >
           <Text style={styles.buttonText}>Clear All Data</Text>
         </TouchableOpacity>
       </View>

@@ -3,6 +3,7 @@
   "compilerOptions": {
     "declaration": true,
     "declarationMap": true,
+    "rootDir": "src",
     "outDir": "lib/typescript",
     "noUnusedLocals": false,
     "noUnusedParameters": false

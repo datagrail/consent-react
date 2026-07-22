@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, Switch, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import type { ConsentLayerCategory } from '../../types';
 import type { BannerTheme } from '../theme';
+import { ConsentToggle } from './ConsentToggle';
 
 interface CategoryElementProps {
   categories: ConsentLayerCategory[];
@@ -33,28 +34,28 @@ export function CategoryElement({
         return (
           <View
             key={category.id}
-            style={[styles.row, { borderBottomColor: theme.colors.border, paddingVertical: theme.spacing.sm }]}
+            style={[
+              styles.row,
+              { borderBottomColor: theme.colors.border, paddingVertical: theme.spacing.sm },
+            ]}
           >
             <View style={styles.info}>
-              <Text style={[styles.name, { color: theme.colors.text, fontSize: theme.fontSize.body }]}>
+              <Text
+                style={[styles.name, { color: theme.colors.text, fontSize: theme.fontSize.body }]}
+              >
                 {name}
               </Text>
             </View>
-            {category.alwaysOn ? (
-              <Text
-                style={[styles.alwaysOn, { color: theme.colors.toggleOn, fontSize: theme.fontSize.small }]}
-                accessibilityLabel={`${name}: ${essentialLabel}`}
-              >
-                {essentialLabel}
-              </Text>
-            ) : (
-              <Switch
-                value={isEnabled}
-                onValueChange={(value) => onToggle(category.gtmKey, value)}
-                trackColor={{ false: theme.colors.toggleOff, true: theme.colors.toggleOn }}
-                accessibilityLabel={`${name}: ${isEnabled ? 'enabled' : 'disabled'}`}
-              />
-            )}
+            <ConsentToggle
+              name={name}
+              gtmKey={category.gtmKey}
+              alwaysOn={category.alwaysOn}
+              essentialLabel={essentialLabel}
+              isEnabled={isEnabled}
+              theme={theme}
+              onToggle={onToggle}
+              testIDPrefix="banner-toggle-"
+            />
           </View>
         );
       })}
@@ -76,8 +77,5 @@ const styles = StyleSheet.create({
   },
   name: {
     fontWeight: '500',
-  },
-  alwaysOn: {
-    fontWeight: '600',
   },
 });

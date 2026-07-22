@@ -162,7 +162,12 @@ const testConfig: ConsentConfig = {
                 uuids: [],
                 cookiePatterns: [],
                 translations: {
-                  en: { id: 'ct4', locale: 'en', name: 'Hidden Category', description: 'Should not show.' },
+                  en: {
+                    id: 'ct4',
+                    locale: 'en',
+                    name: 'Hidden Category',
+                    description: 'Should not show.',
+                  },
                 },
                 showTrackingDetailsLink: false,
               },
@@ -269,9 +274,7 @@ describe('PreferenceCenter', () => {
   });
 
   it('shows description when category is expanded', () => {
-    const { getByText, queryByText, getByLabelText } = render(
-      <PreferenceCenter locale="en" />,
-    );
+    const { getByText, queryByText, getByLabelText } = render(<PreferenceCenter locale="en" />);
 
     expect(queryByText('Used for targeted advertising.')).toBeNull();
     fireEvent.press(getByLabelText('Marketing details'));
@@ -297,10 +300,21 @@ describe('PreferenceCenter', () => {
     expect(queryByTestId('tracking-details-dg-category-marketing')).toBeNull();
   });
 
-  it('renders accessibility labels on toggles', () => {
+  it('renders accessibility labels and checked state on toggles', () => {
     const { getByLabelText } = render(<PreferenceCenter locale="en" />);
-    expect(getByLabelText('Marketing: disabled')).toBeTruthy();
-    expect(getByLabelText('Functional: enabled')).toBeTruthy();
+    expect(getByLabelText('Marketing').props.accessibilityState).toEqual({ checked: false });
+    expect(getByLabelText('Functional').props.accessibilityState).toEqual({ checked: true });
+  });
+
+  it('exposes expanded state on category details controls', () => {
+    const { getByLabelText } = render(<PreferenceCenter locale="en" />);
+    const marketingDetails = getByLabelText('Marketing details');
+
+    expect(marketingDetails.props.accessibilityState).toEqual({ expanded: false });
+    fireEvent.press(marketingDetails);
+    expect(getByLabelText('Marketing details').props.accessibilityState).toEqual({
+      expanded: true,
+    });
   });
 
   it('uses provided locale for translations', () => {

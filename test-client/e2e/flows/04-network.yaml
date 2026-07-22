@@ -1,0 +1,68 @@
+appId: ${APP_ID}
+name: Network - offline queue controls
+---
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+
+- tapOn:
+    id: 'tab-network'
+- assertVisible: 'Network Control Panel'
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-04-network-00-ready'
+
+- tapOn:
+    id: 'toggle-offline'
+- assertVisible:
+    id: 'event-offline-mode-enabled'
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-04-network-01-offline-enabled'
+
+- tapOn:
+    id: 'btn-check-queue-status'
+- extendedWaitUntil:
+    visible:
+      id: 'result-QueueStatus-ok'
+    timeout: 30000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-04-network-02-queue-status'
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-drain-queue'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-drain-queue'
+- extendedWaitUntil:
+    visible:
+      id: 'result-DrainQueue-ok'
+    timeout: 30000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-04-network-03-queue-drained'
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-clear-all-data'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-clear-all-data'
+- scrollUntilVisible:
+    element:
+      id: 'event-all-data-cleared-via-reset'
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-04-network-04-data-cleared'

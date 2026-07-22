@@ -1,0 +1,44 @@
+appId: ${APP_ID}
+name: State Inspector - live consent state
+---
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-acceptAll'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-acceptAll'
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-03-state-00-consent-prepared'
+
+- tapOn:
+    id: 'tab-state'
+- assertVisible: 'Consent State Inspector'
+- assertVisible:
+    id: 'state-config-version'
+- assertVisible:
+    id: 'state-customer-id'
+- assertVisible: 'Current Preferences'
+- assertNotVisible: 'N/A'
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-03-state-01-populated'

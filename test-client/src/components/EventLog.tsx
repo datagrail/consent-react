@@ -18,7 +18,11 @@ export function EventLog({ entries, maxHeight = 200 }: EventLogProps): React.JSX
 
   if (entries.length === 0) {
     return (
-      <View style={[styles.container, { maxHeight }]}>
+      <View
+        style={[styles.container, { maxHeight }]}
+        accessibilityLabel="Event log"
+        testID="event-log"
+      >
         <Text style={styles.empty}>No events yet</Text>
       </View>
     );
@@ -29,21 +33,29 @@ export function EventLog({ entries, maxHeight = 200 }: EventLogProps): React.JSX
       ref={scrollRef}
       style={[styles.container, { maxHeight }]}
       nestedScrollEnabled
+      accessibilityLabel="Event log"
+      accessibilityLiveRegion="polite"
+      testID="event-log"
     >
       {entries.map((entry) => (
-        <View key={entry.id} style={styles.entry}>
+        <View
+          key={entry.id}
+          style={styles.entry}
+          accessible
+          accessibilityLabel={`${entry.type}. ${entry.message}`}
+          testID={`event-${entry.message
+            .replace(/[^a-zA-Z0-9]+/g, '-')
+            .replace(/^-|-$/g, '')
+            .toLowerCase()}`}
+        >
           <Text style={[styles.badge, styles[`badge_${entry.type}`]]}>
             {entry.type.toUpperCase()}
           </Text>
-          <Text style={styles.timestamp}>
-            {entry.timestamp.toLocaleTimeString()}
-          </Text>
+          <Text style={styles.timestamp}>{entry.timestamp.toLocaleTimeString()}</Text>
           <Text style={styles.message}>{entry.message}</Text>
           {entry.data !== undefined && (
             <Text style={styles.data}>
-              {typeof entry.data === 'string'
-                ? entry.data
-                : JSON.stringify(entry.data, null, 2)}
+              {typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data, null, 2)}
             </Text>
           )}
         </View>

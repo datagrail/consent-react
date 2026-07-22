@@ -1,0 +1,255 @@
+appId: ${APP_ID}
+name: API Exercise - all public methods
+---
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-00-launched'
+
+# Initialization
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-01-initialized'
+
+# Synchronous consent state reads
+- scrollUntilVisible:
+    element:
+      id: 'btn-needsConsent'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-needsConsent'
+- extendedWaitUntil:
+    visible:
+      id: 'result-needsConsent-ok'
+    timeout: 10000
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-hasUserConsent'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-hasUserConsent'
+- extendedWaitUntil:
+    visible:
+      id: 'result-hasUserConsent-ok'
+    timeout: 10000
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-isCategoryEnabled'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-isCategoryEnabled'
+- extendedWaitUntil:
+    visible:
+      id: 'result-isCategoryEnabled-ok'
+    timeout: 10000
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-getPreferences'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-getPreferences'
+- extendedWaitUntil:
+    visible:
+      id: 'result-getPreferences-ok'
+    timeout: 10000
+
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-02-state-reads'
+
+# Async consent actions
+- scrollUntilVisible:
+    element:
+      id: 'btn-acceptAll'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-acceptAll'
+- extendedWaitUntil:
+    visible:
+      id: 'result-acceptAll-ok'
+    timeout: 10000
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-rejectAll'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-rejectAll'
+- extendedWaitUntil:
+    visible:
+      id: 'result-rejectAll-ok'
+    timeout: 10000
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-savePreferences'
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: 'btn-savePreferences'
+- extendedWaitUntil:
+    visible:
+      id: 'result-savePreferences-ok'
+    timeout: 10000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-03-consent-actions'
+
+# Run dynamic WebView and analytics results in fresh UI states so one result
+# cannot push the next target beyond Maestro's reliable scroll range.
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+- scrollUntilVisible:
+    element:
+      id: 'btn-getConsentPayloadForWebView'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-getConsentPayloadForWebView'
+- extendedWaitUntil:
+    visible:
+      id: 'result-getConsentPayloadForWebView-ok'
+    timeout: 10000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-04-webview-payload'
+
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+- scrollUntilVisible:
+    element:
+      id: 'btn-getConsentInjectionScript'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-getConsentInjectionScript'
+- extendedWaitUntil:
+    visible:
+      id: 'result-getConsentInjectionScript-ok'
+    timeout: 10000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-05-webview-injection'
+
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+- scrollUntilVisible:
+    element:
+      id: 'btn-trackBannerShown'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-trackBannerShown'
+- extendedWaitUntil:
+    visible:
+      id: 'result-trackBannerShown-ok'
+    timeout: 10000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-06-event-tracked'
+
+# Large JSON results run last in a fresh UI state so they cannot displace later controls.
+- launchApp:
+    stopApp: true
+- assertVisible: 'API Exercise'
+- tapOn:
+    id: 'btn-reset'
+- extendedWaitUntil:
+    visible:
+      id: 'result-reset-ok'
+    timeout: 10000
+- tapOn:
+    id: 'btn-initialize-sticky'
+- scrollUntilVisible:
+    element:
+      id: 'result-initialize-ok'
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 50
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-getCategories'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-getCategories'
+- extendedWaitUntil:
+    visible:
+      id: 'result-getCategories-ok'
+    timeout: 10000
+
+- scrollUntilVisible:
+    element:
+      id: 'btn-getConfig'
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+- tapOn:
+    id: 'btn-getConfig'
+- extendedWaitUntil:
+    visible:
+      id: 'result-getConfig-ok'
+    timeout: 10000
+- takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-07-large-reads-complete'

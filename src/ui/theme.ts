@@ -35,13 +35,15 @@ export const DEFAULT_LIGHT_THEME: BannerTheme = {
   colors: {
     background: '#FFFFFF',
     text: '#1A1A1A',
-    buttonPrimary: '#6366F1',
+    // #4F46E5 gives 6.3:1 on white (WCAG AA). The lighter #6366F1 is only
+    // 4.47:1, which fails for the normal-weight link/label text that reuses it.
+    buttonPrimary: '#4F46E5',
     buttonPrimaryText: '#FFFFFF',
     buttonSecondary: '#E5E7EB',
     buttonSecondaryText: '#374151',
-    link: '#6366F1',
+    link: '#4F46E5',
     border: '#E5E7EB',
-    toggleOn: '#6366F1',
+    toggleOn: '#4F46E5',
     toggleOff: '#D1D5DB',
   },
   spacing: { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 },
@@ -53,7 +55,10 @@ export const DEFAULT_DARK_THEME: BannerTheme = {
   colors: {
     background: '#1F2937',
     text: '#F9FAFB',
-    buttonPrimary: '#818CF8',
+    // #818CF8 as a button background only gives 2.98:1 with white text. #4F46E5
+    // brings it to 6.29:1 (WCAG AA). The lighter #818CF8 is still fine for
+    // link/toggle/label use below, where it sits as foreground on the dark bg.
+    buttonPrimary: '#4F46E5',
     buttonPrimaryText: '#FFFFFF',
     buttonSecondary: '#374151',
     buttonSecondaryText: '#E5E7EB',

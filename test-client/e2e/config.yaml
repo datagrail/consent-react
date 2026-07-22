@@ -1,0 +1,7 @@
+# Maestro test suite config.
+# Run from test-client/ with the commands in e2e/README.md.
+# APP_ID and PLATFORM are required Maestro environment variables:
+#   Android: APP_ID=com.consenttestclient
+#   iOS:     APP_ID=org.reactjs.native.example.ConsentTestClient
+flows:
+  - '*'

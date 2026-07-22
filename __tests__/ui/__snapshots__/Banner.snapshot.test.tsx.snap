@@ -1,9 +1,995 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`Banner Snapshots renders with bottom position 1`] = `null`;
+exports[`Banner Snapshots renders with bottom position 1`] = `
+<Modal
+  animationType="none"
+  hardwareAccelerated={false}
+  onRequestClose={[Function]}
+  onShow={[Function]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "backgroundColor": "rgba(0, 0, 0, 0.5)",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+        "zIndex": 999,
+      }
+    }
+    testID="banner-overlay"
+  >
+    <View
+      accessibilityLabel="Privacy consent dialog"
+      accessibilityRole="alert"
+      accessibilityViewIsModal={true}
+      collapsable={false}
+      importantForAccessibility="yes"
+      style={
+        {
+          "backgroundColor": "#FFFFFF",
+          "borderRadius": 12,
+          "bottom": 0,
+          "left": 0,
+          "overflow": "hidden",
+          "padding": 24,
+          "position": "absolute",
+          "right": 0,
+          "transform": [
+            {
+              "translateY": 0,
+            },
+          ],
+        }
+      }
+      testID="banner-container"
+    >
+      <View
+        accessibilityHint="Dismisses the consent dialog"
+        accessibilityLabel="Close"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        hitSlop={
+          {
+            "bottom": 8,
+            "left": 8,
+            "right": 8,
+            "top": 8,
+          }
+        }
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "height": 32,
+            "justifyContent": "center",
+            "opacity": 1,
+            "position": "absolute",
+            "right": 12,
+            "top": 12,
+            "width": 32,
+            "zIndex": 1,
+          }
+        }
+        testID="banner-close"
+      >
+        <Text
+          style={
+            [
+              {
+                "fontSize": 18,
+                "fontWeight": "bold",
+              },
+              {
+                "color": "#1A1A1A",
+              },
+            ]
+          }
+        >
+          ✕
+        </Text>
+      </View>
+      <Text
+        accessibilityRole="header"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 20,
+            "fontWeight": "bold",
+            "marginBottom": 16,
+          }
+        }
+      >
+        Privacy Settings
+      </Text>
+      <Text
+        accessibilityRole="text"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 14,
+            "fontWeight": "normal",
+            "marginBottom": 16,
+          }
+        }
+      >
+        We use cookies to improve your experience.
+      </Text>
+      <View
+        accessibilityLabel="Accept All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#4F46E5",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-accept-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#FFFFFF",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Accept All
+        </Text>
+      </View>
+      <View
+        accessibilityLabel="Reject All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#E5E7EB",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-reject-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#374151",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Reject All
+        </Text>
+      </View>
+    </View>
+  </View>
+</Modal>
+`;
 
-exports[`Banner Snapshots renders with center position 1`] = `null`;
+exports[`Banner Snapshots renders with center position 1`] = `
+<Modal
+  animationType="none"
+  hardwareAccelerated={false}
+  onRequestClose={[Function]}
+  onShow={[Function]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "backgroundColor": "rgba(0, 0, 0, 0.5)",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+        "zIndex": 999,
+      }
+    }
+    testID="banner-overlay"
+  >
+    <View
+      accessibilityLabel="Privacy consent dialog"
+      accessibilityRole="alert"
+      accessibilityViewIsModal={true}
+      collapsable={false}
+      importantForAccessibility="yes"
+      style={
+        {
+          "alignSelf": "center",
+          "backgroundColor": "#FFFFFF",
+          "borderRadius": 12,
+          "maxHeight": 1067.2,
+          "maxWidth": 500,
+          "overflow": "hidden",
+          "padding": 24,
+          "transform": [
+            {
+              "translateY": 0,
+            },
+          ],
+          "width": 675,
+        }
+      }
+      testID="banner-container"
+    >
+      <View
+        accessibilityHint="Dismisses the consent dialog"
+        accessibilityLabel="Close"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        hitSlop={
+          {
+            "bottom": 8,
+            "left": 8,
+            "right": 8,
+            "top": 8,
+          }
+        }
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "height": 32,
+            "justifyContent": "center",
+            "opacity": 1,
+            "position": "absolute",
+            "right": 12,
+            "top": 12,
+            "width": 32,
+            "zIndex": 1,
+          }
+        }
+        testID="banner-close"
+      >
+        <Text
+          style={
+            [
+              {
+                "fontSize": 18,
+                "fontWeight": "bold",
+              },
+              {
+                "color": "#1A1A1A",
+              },
+            ]
+          }
+        >
+          ✕
+        </Text>
+      </View>
+      <Text
+        accessibilityRole="header"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 20,
+            "fontWeight": "bold",
+            "marginBottom": 16,
+          }
+        }
+      >
+        Privacy Settings
+      </Text>
+      <Text
+        accessibilityRole="text"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 14,
+            "fontWeight": "normal",
+            "marginBottom": 16,
+          }
+        }
+      >
+        We use cookies to improve your experience.
+      </Text>
+      <View
+        accessibilityLabel="Accept All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#4F46E5",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-accept-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#FFFFFF",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Accept All
+        </Text>
+      </View>
+      <View
+        accessibilityLabel="Reject All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#E5E7EB",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-reject-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#374151",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Reject All
+        </Text>
+      </View>
+    </View>
+  </View>
+</Modal>
+`;
 
-exports[`Banner Snapshots renders with close button 1`] = `null`;
+exports[`Banner Snapshots renders with close button 1`] = `
+<Modal
+  animationType="none"
+  hardwareAccelerated={false}
+  onRequestClose={[Function]}
+  onShow={[Function]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "backgroundColor": "rgba(0, 0, 0, 0.5)",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+        "zIndex": 999,
+      }
+    }
+    testID="banner-overlay"
+  >
+    <View
+      accessibilityLabel="Privacy consent dialog"
+      accessibilityRole="alert"
+      accessibilityViewIsModal={true}
+      collapsable={false}
+      importantForAccessibility="yes"
+      style={
+        {
+          "backgroundColor": "#FFFFFF",
+          "borderRadius": 12,
+          "bottom": 0,
+          "left": 0,
+          "overflow": "hidden",
+          "padding": 24,
+          "position": "absolute",
+          "right": 0,
+          "transform": [
+            {
+              "translateY": 0,
+            },
+          ],
+        }
+      }
+      testID="banner-container"
+    >
+      <View
+        accessibilityHint="Dismisses the consent dialog"
+        accessibilityLabel="Close"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        hitSlop={
+          {
+            "bottom": 8,
+            "left": 8,
+            "right": 8,
+            "top": 8,
+          }
+        }
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "height": 32,
+            "justifyContent": "center",
+            "opacity": 1,
+            "position": "absolute",
+            "right": 12,
+            "top": 12,
+            "width": 32,
+            "zIndex": 1,
+          }
+        }
+        testID="banner-close"
+      >
+        <Text
+          style={
+            [
+              {
+                "fontSize": 18,
+                "fontWeight": "bold",
+              },
+              {
+                "color": "#1A1A1A",
+              },
+            ]
+          }
+        >
+          ✕
+        </Text>
+      </View>
+      <Text
+        accessibilityRole="header"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 20,
+            "fontWeight": "bold",
+            "marginBottom": 16,
+          }
+        }
+      >
+        Privacy Settings
+      </Text>
+      <Text
+        accessibilityRole="text"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 14,
+            "fontWeight": "normal",
+            "marginBottom": 16,
+          }
+        }
+      >
+        We use cookies to improve your experience.
+      </Text>
+      <View
+        accessibilityLabel="Accept All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#4F46E5",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-accept-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#FFFFFF",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Accept All
+        </Text>
+      </View>
+      <View
+        accessibilityLabel="Reject All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#E5E7EB",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-reject-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#374151",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Reject All
+        </Text>
+      </View>
+    </View>
+  </View>
+</Modal>
+`;
 
-exports[`Banner Snapshots renders without close button 1`] = `null`;
+exports[`Banner Snapshots renders without close button 1`] = `
+<Modal
+  animationType="none"
+  hardwareAccelerated={false}
+  onRequestClose={[Function]}
+  onShow={[Function]}
+  statusBarTranslucent={true}
+  transparent={true}
+  visible={true}
+>
+  <View
+    style={
+      {
+        "alignItems": "center",
+        "backgroundColor": "rgba(0, 0, 0, 0.5)",
+        "bottom": 0,
+        "justifyContent": "center",
+        "left": 0,
+        "position": "absolute",
+        "right": 0,
+        "top": 0,
+        "zIndex": 999,
+      }
+    }
+    testID="banner-overlay"
+  >
+    <View
+      accessibilityLabel="Privacy consent dialog"
+      accessibilityRole="alert"
+      accessibilityViewIsModal={true}
+      collapsable={false}
+      importantForAccessibility="yes"
+      style={
+        {
+          "backgroundColor": "#FFFFFF",
+          "borderRadius": 12,
+          "bottom": 0,
+          "left": 0,
+          "overflow": "hidden",
+          "padding": 24,
+          "position": "absolute",
+          "right": 0,
+          "transform": [
+            {
+              "translateY": 0,
+            },
+          ],
+        }
+      }
+      testID="banner-container"
+    >
+      <Text
+        accessibilityRole="header"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 20,
+            "fontWeight": "bold",
+            "marginBottom": 16,
+          }
+        }
+      >
+        Privacy Settings
+      </Text>
+      <Text
+        accessibilityRole="text"
+        style={
+          {
+            "color": "#1A1A1A",
+            "fontSize": 14,
+            "fontWeight": "normal",
+            "marginBottom": 16,
+          }
+        }
+      >
+        We use cookies to improve your experience.
+      </Text>
+      <View
+        accessibilityLabel="Accept All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#4F46E5",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-accept-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#FFFFFF",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Accept All
+        </Text>
+      </View>
+      <View
+        accessibilityLabel="Reject All"
+        accessibilityRole="button"
+        accessibilityState={
+          {
+            "busy": undefined,
+            "checked": undefined,
+            "disabled": undefined,
+            "expanded": undefined,
+            "selected": undefined,
+          }
+        }
+        accessibilityValue={
+          {
+            "max": undefined,
+            "min": undefined,
+            "now": undefined,
+            "text": undefined,
+          }
+        }
+        accessible={true}
+        collapsable={false}
+        focusable={true}
+        onClick={[Function]}
+        onResponderGrant={[Function]}
+        onResponderMove={[Function]}
+        onResponderRelease={[Function]}
+        onResponderTerminate={[Function]}
+        onResponderTerminationRequest={[Function]}
+        onStartShouldSetResponder={[Function]}
+        style={
+          {
+            "alignItems": "center",
+            "backgroundColor": "#E5E7EB",
+            "borderRadius": 12,
+            "justifyContent": "center",
+            "marginBottom": 8,
+            "opacity": 1,
+            "paddingHorizontal": 16,
+            "paddingVertical": 12,
+          }
+        }
+        testID="banner-action-reject-all"
+      >
+        <Text
+          style={
+            {
+              "color": "#374151",
+              "fontSize": 16,
+              "fontWeight": "bold",
+              "textAlign": "center",
+            }
+          }
+        >
+          Reject All
+        </Text>
+      </View>
+    </View>
+  </View>
+</Modal>
+`;

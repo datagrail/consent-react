@@ -74,17 +74,19 @@
   },
   "dependencies": {
     "react-native-get-random-values": "^1.11.0",
-    "react-native-mmkv": "^3.0.0",
-    "uuid": "^14.0.0"
+    "react-native-mmkv": "^3.0.0"
   },
   "jest": {
     "preset": "react-native",
+    "setupFilesAfterEnv": [
+      "<rootDir>/jest.setup.ts"
+    ],
     "modulePathIgnorePatterns": [
       "<rootDir>/lib/",
       "<rootDir>/test-client/"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!(react-native|@react-native|react-native-mmkv|uuid)/)"
+      "node_modules/(?!(react-native|@react-native|react-native-mmkv)/)"
     ]
   },
   "react-native-builder-bob": {

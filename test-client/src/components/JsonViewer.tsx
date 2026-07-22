@@ -17,23 +17,26 @@ export function JsonViewer({
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
   const formatted =
-    data === null || data === undefined
-      ? String(data)
-      : JSON.stringify(data, null, 2);
+    data === null || data === undefined ? String(data) : JSON.stringify(data, null, 2);
 
   const header = (
     <View style={styles.header}>
       <Text style={styles.label}>{label}</Text>
-      {collapsible && (
-        <Text style={styles.toggle}>{collapsed ? '[+]' : '[-]'}</Text>
-      )}
+      {collapsible && <Text style={styles.toggle}>{collapsed ? '[+]' : '[-]'}</Text>}
     </View>
   );
 
   if (collapsible) {
     return (
       <View style={styles.container}>
-        <TouchableOpacity onPress={() => setCollapsed((c) => !c)}>
+        <TouchableOpacity
+          onPress={() => setCollapsed((c) => !c)}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint={collapsed ? 'Expands JSON content' : 'Collapses JSON content'}
+          accessibilityState={{ expanded: !collapsed }}
+          testID={`json-toggle-${label.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`}
+        >
           {header}
         </TouchableOpacity>
         {!collapsed && <Text style={styles.json}>{formatted}</Text>}

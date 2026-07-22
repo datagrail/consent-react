@@ -5,6 +5,8 @@ import {
   StyleSheet,
   Dimensions,
   AccessibilityInfo,
+  findNodeHandle,
+  Modal,
 } from 'react-native';
 import type {
   BannerProps,
@@ -29,7 +31,11 @@ import * as ConsentManager from '../ConsentManager';
  * Renders text, buttons, links from remote config.
  * Supports position variants, animations, and accessibility.
  */
-export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): React.ReactElement | null {
+export function Banner({
+  onConsentSaved,
+  onDismiss,
+  locale,
+}: BannerProps): React.ReactElement | null {
   const config = ConsentManager.getConfig();
   const theme = useTheme(config);
   const [currentLayerId, setCurrentLayerId] = useState<string | null>(null);
@@ -37,6 +43,7 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
   const [visible, setVisible] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const animValue = useRef(new Animated.Value(0)).current;
+  const containerRef = useRef<View>(null);
 
   // No device-locale detection: React Native has no zero-dependency API for
   // reading the device locale, so we default to 'en'. Add real detection if a
@@ -64,11 +71,13 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
 
   // Check reduce motion preference
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      setReduceMotion(enabled);
-    }).catch(() => {
-      // Default to no reduce motion
-    });
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        setReduceMotion(enabled);
+      })
+      .catch(() => {
+        // Default to no reduce motion
+      });
   }, []);
 
   // Run animation when visible changes
@@ -86,56 +95,74 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
     }
   }, [visible, reduceMotion, animValue]);
 
-  const handleButtonAction = useCallback(async (action: ButtonAction, element: ConsentLayerElement) => {
-    switch (action) {
-      case 'accept_all': {
-        await ConsentManager.acceptAll();
-        const prefs = ConsentManager.getPreferences();
-        if (prefs && onConsentSaved) {
-          onConsentSaved(prefs);
+  // Move screen-reader focus onto the dialog once it appears, so VoiceOver /
+  // TalkBack announce it rather than leaving focus on the content behind it.
+  // Driven by the Modal's onShow (below) rather than a [visible] effect: the
+  // Modal hosts its children in a separate native window that isn't attached
+  // in the same commit, so a synchronous setAccessibilityFocus would no-op. A
+  // rAF gives the window a frame to lay out before we target it.
+  const focusDialog = useCallback(() => {
+    requestAnimationFrame(() => {
+      const node = findNodeHandle(containerRef.current);
+      if (node != null) {
+        AccessibilityInfo.setAccessibilityFocus(node);
+      }
+    });
+  }, []);
+
+  const handleButtonAction = useCallback(
+    async (action: ButtonAction, element: ConsentLayerElement) => {
+      switch (action) {
+        case 'accept_all': {
+          await ConsentManager.acceptAll();
+          const prefs = ConsentManager.getPreferences();
+          if (prefs && onConsentSaved) {
+            onConsentSaved(prefs);
+          }
+          setVisible(false);
+          break;
         }
-        setVisible(false);
-        break;
-      }
-      case 'reject_all': {
-        await ConsentManager.rejectAll();
-        const prefs = ConsentManager.getPreferences();
-        if (prefs && onConsentSaved) {
-          onConsentSaved(prefs);
+        case 'reject_all': {
+          await ConsentManager.rejectAll();
+          const prefs = ConsentManager.getPreferences();
+          if (prefs && onConsentSaved) {
+            onConsentSaved(prefs);
+          }
+          setVisible(false);
+          break;
         }
-        setVisible(false);
-        break;
-      }
-      case 'save_preferences':
-      case 'custom': {
-        const preferences: ConsentPreferences = {
-          isCustomised: true,
-          cookieOptions: Object.entries(enabledCategories).map(([gtmKey, isEnabled]) => ({
-            gtmKey,
-            isEnabled,
-          })),
-        };
-        await ConsentManager.savePreferences(preferences);
-        if (onConsentSaved) {
-          onConsentSaved(preferences);
+        case 'save_preferences':
+        case 'custom': {
+          const preferences: ConsentPreferences = {
+            isCustomised: true,
+            cookieOptions: Object.entries(enabledCategories).map(([gtmKey, isEnabled]) => ({
+              gtmKey,
+              isEnabled,
+            })),
+          };
+          await ConsentManager.savePreferences(preferences);
+          if (onConsentSaved) {
+            onConsentSaved(preferences);
+          }
+          setVisible(false);
+          break;
         }
-        setVisible(false);
-        break;
-      }
-      case 'open_layer': {
-        const targetLayer = element.targetConsentLayer;
-        if (targetLayer) {
-          setCurrentLayerId(targetLayer);
+        case 'open_layer': {
+          const targetLayer = element.targetConsentLayer;
+          if (targetLayer) {
+            setCurrentLayerId(targetLayer);
+          }
+          break;
         }
-        break;
+        case 'noop': {
+          onDismiss?.();
+          setVisible(false);
+          break;
+        }
       }
-      case 'noop': {
-        onDismiss?.();
-        setVisible(false);
-        break;
-      }
-    }
-  }, [enabledCategories, onConsentSaved, onDismiss]);
+    },
+    [enabledCategories, onConsentSaved, onDismiss],
+  );
 
   const handleCategoryToggle = useCallback((gtmKey: string, enabled: boolean) => {
     setEnabledCategories((prev) => ({ ...prev, [gtmKey]: enabled }));
@@ -159,37 +186,54 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
   const sortedElements = [...layer.elements].sort((a, b) => a.order - b.order);
 
   return (
-    <View style={styles.overlay} testID="banner-overlay">
-      <Animated.View
-        style={[
-          styles.container,
-          {
-            backgroundColor: theme.colors.background,
-            borderRadius: theme.borderRadius,
-            padding: theme.spacing.lg,
-          },
-          positionStyle.containerStyle,
-          { transform: positionStyle.transform },
-        ]}
-        accessibilityRole="alert"
-        testID="banner-container"
-      >
-        {layer.showCloseButton && (
-          <CloseButton onPress={handleDismiss} theme={theme} />
-        )}
-        {sortedElements.map((element) => (
-          <ElementRenderer
-            key={element.id}
-            element={element}
-            theme={theme}
-            locale={resolvedLocale}
-            enabledCategories={enabledCategories}
-            onButtonAction={handleButtonAction}
-            onCategoryToggle={handleCategoryToggle}
-          />
-        ))}
-      </Animated.View>
-    </View>
+    // Rendering into a Modal isolates the dialog in its own native window, so
+    // TalkBack/VoiceOver can't reach the app content behind it (the z-index
+    // overlay alone doesn't do this on Android), and the Android hardware back
+    // button routes to onRequestClose instead of navigating the app. The slide
+    // animation stays on the inner Animated.View, so Modal's own animation is
+    // disabled to avoid double-animating.
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      onRequestClose={handleDismiss}
+      onShow={focusDialog}
+      statusBarTranslucent
+    >
+      <View style={styles.overlay} testID="banner-overlay">
+        <Animated.View
+          ref={containerRef}
+          style={[
+            styles.container,
+            {
+              backgroundColor: theme.colors.background,
+              borderRadius: theme.borderRadius,
+              padding: theme.spacing.lg,
+            },
+            positionStyle.containerStyle,
+            { transform: positionStyle.transform },
+          ]}
+          accessibilityRole="alert"
+          accessibilityLabel="Privacy consent dialog"
+          accessibilityViewIsModal
+          importantForAccessibility="yes"
+          testID="banner-container"
+        >
+          {layer.showCloseButton && <CloseButton onPress={handleDismiss} theme={theme} />}
+          {sortedElements.map((element) => (
+            <ElementRenderer
+              key={element.id}
+              element={element}
+              theme={theme}
+              locale={resolvedLocale}
+              enabledCategories={enabledCategories}
+              onButtonAction={handleButtonAction}
+              onCategoryToggle={handleCategoryToggle}
+            />
+          ))}
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 
@@ -262,7 +306,10 @@ function findAllCategories(config: ConsentConfig): ConsentLayerCategory[] {
 
 interface PositionResult {
   containerStyle: Record<string, unknown>;
-  transform: Animated.WithAnimatedValue<{ translateY: Animated.AnimatedInterpolation<number> } | { translateX: Animated.AnimatedInterpolation<number> }>[];
+  transform: Animated.WithAnimatedValue<
+    | { translateY: Animated.AnimatedInterpolation<number> }
+    | { translateX: Animated.AnimatedInterpolation<number> }
+  >[];
 }
 
 function getPositionStyle(
