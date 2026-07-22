@@ -77,7 +77,7 @@
             },
             "26259ccb-e5e0-4305-b696-fa2b7413c239": {
                 "id": "26259ccb-e5e0-4305-b696-fa2b7413c239",
-                "name": "Categories Ler",
+                "name": "Categories Layer",
                 "position": "left",
                 "show_close_button": true,
                 "banner_api_id": "categories-layer",
