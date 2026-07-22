@@ -95,15 +95,20 @@ export function Banner({
     }
   }, [visible, reduceMotion, animValue]);
 
-  // Move screen-reader focus onto the dialog when it appears, so VoiceOver /
+  // Move screen-reader focus onto the dialog once it appears, so VoiceOver /
   // TalkBack announce it rather than leaving focus on the content behind it.
-  useEffect(() => {
-    if (!visible) return;
-    const node = findNodeHandle(containerRef.current);
-    if (node != null) {
-      AccessibilityInfo.setAccessibilityFocus(node);
-    }
-  }, [visible]);
+  // Driven by the Modal's onShow (below) rather than a [visible] effect: the
+  // Modal hosts its children in a separate native window that isn't attached
+  // in the same commit, so a synchronous setAccessibilityFocus would no-op. A
+  // rAF gives the window a frame to lay out before we target it.
+  const focusDialog = useCallback(() => {
+    requestAnimationFrame(() => {
+      const node = findNodeHandle(containerRef.current);
+      if (node != null) {
+        AccessibilityInfo.setAccessibilityFocus(node);
+      }
+    });
+  }, []);
 
   const handleButtonAction = useCallback(
     async (action: ButtonAction, element: ConsentLayerElement) => {
@@ -192,6 +197,7 @@ export function Banner({
       transparent
       animationType="none"
       onRequestClose={handleDismiss}
+      onShow={focusDialog}
       statusBarTranslucent
     >
       <View style={styles.overlay} testID="banner-overlay">
