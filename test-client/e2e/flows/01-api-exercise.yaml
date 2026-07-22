@@ -83,8 +83,10 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-acceptAll'
-- waitForAnimationToEnd:
-    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: 'result-acceptAll-ok'
+    timeout: 10000
 
 - scrollUntilVisible:
     element:
@@ -93,8 +95,10 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-rejectAll'
-- waitForAnimationToEnd:
-    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: 'result-rejectAll-ok'
+    timeout: 10000
 
 - scrollUntilVisible:
     element:
@@ -103,8 +107,10 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-savePreferences'
-- waitForAnimationToEnd:
-    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: 'result-savePreferences-ok'
+    timeout: 10000
 - takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-03-consent-actions'
 
 # Run dynamic WebView and analytics results in fresh UI states so one result
@@ -134,8 +140,10 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-getConsentPayloadForWebView'
-- waitForAnimationToEnd:
-    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: 'result-getConsentPayloadForWebView-ok'
+    timeout: 10000
 - takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-04-webview-payload'
 
 - launchApp:
@@ -163,8 +171,10 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-getConsentInjectionScript'
-- waitForAnimationToEnd:
-    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: 'result-getConsentInjectionScript-ok'
+    timeout: 10000
 - takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-05-webview-injection'
 
 - launchApp:
@@ -192,8 +202,10 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-trackBannerShown'
-- waitForAnimationToEnd:
-    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: 'result-trackBannerShown-ok'
+    timeout: 10000
 - takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-06-event-tracked'
 
 # Large JSON results run last in a fresh UI state so they cannot displace later controls.
@@ -236,4 +248,8 @@ name: API Exercise - all public methods
     centerElement: true
 - tapOn:
     id: 'btn-getConfig'
+- extendedWaitUntil:
+    visible:
+      id: 'result-getConfig-ok'
+    timeout: 10000
 - takeScreenshot: 'e2e/screenshots/${PLATFORM}-01-api-07-large-reads-complete'
