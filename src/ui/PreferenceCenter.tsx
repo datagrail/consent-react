@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Switch, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import type {
   PreferenceCenterProps,
   ConsentConfig,
@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { useTheme } from './theme';
 import type { BannerTheme } from './theme';
+import { ConsentToggle } from './components/ConsentToggle';
 import * as ConsentManager from '../ConsentManager';
 
 /**
@@ -222,27 +223,16 @@ function CategoryRow({
           ) : null}
         </TouchableOpacity>
         <View style={styles.categoryToggle}>
-          {category.alwaysOn ? (
-            <Text
-              style={[
-                styles.alwaysOnLabel,
-                { color: theme.colors.toggleOn, fontSize: theme.fontSize.small },
-              ]}
-              accessibilityLabel={`${name}: ${essentialLabel}`}
-            >
-              {essentialLabel}
-            </Text>
-          ) : (
-            <Switch
-              value={isEnabled}
-              onValueChange={(value) => onToggle(category.gtmKey, value)}
-              trackColor={{ false: theme.colors.toggleOff, true: theme.colors.toggleOn }}
-              accessibilityLabel={name}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: isEnabled }}
-              testID={`toggle-${category.gtmKey}`}
-            />
-          )}
+          <ConsentToggle
+            name={name}
+            gtmKey={category.gtmKey}
+            alwaysOn={category.alwaysOn}
+            essentialLabel={essentialLabel}
+            isEnabled={isEnabled}
+            theme={theme}
+            onToggle={onToggle}
+            testIDPrefix="toggle-"
+          />
         </View>
       </View>
       {isExpanded && description ? (
@@ -455,9 +445,6 @@ const styles = StyleSheet.create({
   },
   categoryToggle: {
     alignItems: 'flex-end',
-  },
-  alwaysOnLabel: {
-    fontWeight: '600',
   },
   categoryDescription: {
     opacity: 0.8,
