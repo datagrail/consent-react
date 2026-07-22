@@ -29,9 +29,12 @@ export function LinkElement({ links, locale, theme }: LinkElementProps): React.R
             }}
             accessibilityRole="link"
             accessibilityLabel={text}
+            accessibilityHint="Opens in your browser"
             style={styles.linkTouchable}
           >
-            <Text style={[styles.linkText, { color: theme.colors.link, fontSize: theme.fontSize.body }]}>
+            <Text
+              style={[styles.linkText, { color: theme.colors.link, fontSize: theme.fontSize.body }]}
+            >
               {text}
             </Text>
           </TouchableOpacity>

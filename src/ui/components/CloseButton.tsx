@@ -14,11 +14,11 @@ export function CloseButton({ onPress, theme }: CloseButtonProps): React.ReactEl
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel="Close"
+      accessibilityHint="Dismisses the consent dialog"
+      testID="banner-close"
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <Text style={[styles.text, { color: theme.colors.text }]}>
-        {'✕'}
-      </Text>
+      <Text style={[styles.text, { color: theme.colors.text }]}>{'✕'}</Text>
     </TouchableOpacity>
   );
 }

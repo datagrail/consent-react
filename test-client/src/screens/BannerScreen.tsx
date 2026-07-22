@@ -1,11 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Banner, PreferenceCenter } from '@datagrail/react-native-consent';
 import type { ConsentPreferences } from '@datagrail/react-native-consent';
 import { EventLog } from '../components/EventLog';
@@ -50,35 +44,34 @@ export function BannerScreen(): React.JSX.Element {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Banner / Preference Center</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        Banner / Preference Center
+      </Text>
 
       {/* View Mode Toggle */}
       <View style={styles.toggleRow}>
         <TouchableOpacity
+          testID="mode-banner"
+          accessibilityRole="tab"
+          accessibilityLabel="Banner mode"
+          accessibilityState={{ selected: viewMode === 'banner' }}
           style={[styles.toggleBtn, viewMode === 'banner' && styles.toggleActive]}
           onPress={() => setViewMode('banner')}
         >
-          <Text
-            style={[
-              styles.toggleText,
-              viewMode === 'banner' && styles.toggleTextActive,
-            ]}
-          >
+          <Text style={[styles.toggleText, viewMode === 'banner' && styles.toggleTextActive]}>
             Banner
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[
-            styles.toggleBtn,
-            viewMode === 'preferenceCenter' && styles.toggleActive,
-          ]}
+          testID="mode-preferenceCenter"
+          accessibilityRole="tab"
+          accessibilityLabel="Preference Center mode"
+          accessibilityState={{ selected: viewMode === 'preferenceCenter' }}
+          style={[styles.toggleBtn, viewMode === 'preferenceCenter' && styles.toggleActive]}
           onPress={() => setViewMode('preferenceCenter')}
         >
           <Text
-            style={[
-              styles.toggleText,
-              viewMode === 'preferenceCenter' && styles.toggleTextActive,
-            ]}
+            style={[styles.toggleText, viewMode === 'preferenceCenter' && styles.toggleTextActive]}
           >
             Preference Center
           </Text>
@@ -91,15 +84,14 @@ export function BannerScreen(): React.JSX.Element {
         {LOCALES.map((loc) => (
           <TouchableOpacity
             key={loc}
+            testID={`locale-${loc}`}
+            accessibilityRole="radio"
+            accessibilityLabel={`Locale ${loc.toUpperCase()}`}
+            accessibilityState={{ checked: locale === loc }}
             style={[styles.localeBtn, locale === loc && styles.localeBtnActive]}
             onPress={() => setLocale(loc)}
           >
-            <Text
-              style={[
-                styles.localeText,
-                locale === loc && styles.localeTextActive,
-              ]}
-            >
+            <Text style={[styles.localeText, locale === loc && styles.localeTextActive]}>
               {loc.toUpperCase()}
             </Text>
           </TouchableOpacity>
@@ -109,11 +101,7 @@ export function BannerScreen(): React.JSX.Element {
       {/* Component Display */}
       <View style={styles.componentContainer}>
         {viewMode === 'banner' ? (
-          <Banner
-            onConsentSaved={handleConsentSaved}
-            onDismiss={handleDismiss}
-            locale={locale}
-          />
+          <Banner onConsentSaved={handleConsentSaved} onDismiss={handleDismiss} locale={locale} />
         ) : (
           <PreferenceCenter
             onSave={handleSave}

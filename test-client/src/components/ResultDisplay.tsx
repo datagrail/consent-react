@@ -31,8 +31,18 @@ export function ResultDisplay({ label, result }: ResultDisplayProps): React.JSX.
         : JSON.stringify(result.value, null, 2)
       : result.error;
 
+  // Encode the outcome in the testID (regex-safe: strip non-alphanumerics from
+  // the label) so e2e flows can assert on `result-<label>-ok` / `-error`
+  // directly via the resource-id.
+  const safeLabel = label.replace(/[^a-zA-Z0-9]+/g, '');
   return (
-    <View style={[styles.container, isError ? styles.errorContainer : styles.successContainer]}>
+    <View
+      testID={`result-${safeLabel}-${isError ? 'error' : 'ok'}`}
+      accessible
+      accessibilityLabel={`${label}: ${isError ? 'error' : 'success'}. ${displayValue}`}
+      accessibilityLiveRegion="polite"
+      style={[styles.container, isError ? styles.errorContainer : styles.successContainer]}
+    >
       <Text style={[styles.label, isError ? styles.errorLabel : styles.successLabel]}>
         {label}: {isError ? 'ERROR' : 'OK'}
       </Text>

@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import {
-  getPreferences,
-  getConfig,
-  onConsentChanged,
-} from '@datagrail/react-native-consent';
-import type {
-  ConsentPreferences,
-  ConsentConfig,
-} from '@datagrail/react-native-consent';
+import { getPreferences, getConfig, onConsentChanged } from '@datagrail/react-native-consent';
+import type { ConsentPreferences, ConsentConfig } from '@datagrail/react-native-consent';
 import { JsonViewer } from '../components/JsonViewer';
 import { EventLog } from '../components/EventLog';
 import { createLogEntry } from '../utils/mockConfig';
@@ -37,10 +30,7 @@ export function StateInspectorScreen(): React.JSX.Element {
 
     const unsubscribe = onConsentChanged((prefs: ConsentPreferences) => {
       setPreferences(prefs);
-      setEventLog((prev) => [
-        ...prev,
-        createLogEntry('event', 'Consent changed', prefs),
-      ]);
+      setEventLog((prev) => [...prev, createLogEntry('event', 'Consent changed', prefs)]);
     });
 
     return unsubscribe;
@@ -58,17 +48,16 @@ export function StateInspectorScreen(): React.JSX.Element {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Consent State Inspector</Text>
+      <Text style={styles.title} accessibilityRole="header">
+        Consent State Inspector
+      </Text>
 
       {/* Metadata */}
       <View style={styles.metaSection}>
         <MetaRow label="Config Version" value={configVersion} />
         <MetaRow label="Container ID" value={consentContainerId} />
         <MetaRow label="Customer ID" value={customerId} />
-        <MetaRow
-          label="Consent Mode"
-          value={config?.consentMode ?? 'N/A'}
-        />
+        <MetaRow label="Consent Mode" value={config?.consentMode ?? 'N/A'} />
         <MetaRow
           label="Show Banner"
           value={config?.showBanner != null ? String(config.showBanner) : 'N/A'}
@@ -79,15 +68,12 @@ export function StateInspectorScreen(): React.JSX.Element {
       <JsonViewer label="Current Preferences" data={preferences} />
 
       {/* Config Cache */}
-      <JsonViewer
-        label="Config Cache"
-        data={config}
-        collapsible
-        defaultCollapsed
-      />
+      <JsonViewer label="Config Cache" data={config} collapsible defaultCollapsed />
 
       {/* Event Log */}
-      <Text style={styles.sectionTitle}>Event Log</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">
+        Event Log
+      </Text>
       <EventLog entries={eventLog} maxHeight={300} />
 
       <View style={styles.bottomPad} />
@@ -101,8 +87,14 @@ interface MetaRowProps {
 }
 
 function MetaRow({ label, value }: MetaRowProps): React.JSX.Element {
+  const testId = `state-${label.replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()}`;
   return (
-    <View style={styles.metaRow}>
+    <View
+      style={styles.metaRow}
+      accessible
+      accessibilityLabel={`${label}: ${value}`}
+      testID={testId}
+    >
       <Text style={styles.metaLabel}>{label}:</Text>
       <Text style={styles.metaValue}>{value}</Text>
     </View>

@@ -1,12 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  Switch,
-  TouchableOpacity,
-  StyleSheet,
-} from 'react-native';
+import { View, Text, ScrollView, Switch, TouchableOpacity, StyleSheet } from 'react-native';
 import type {
   PreferenceCenterProps,
   ConsentConfig,
@@ -106,7 +99,11 @@ export function PreferenceCenter({
   const headerText = getHeaderText(config, resolvedLocale);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]} testID="preference-center">
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      accessibilityLabel="Privacy preference center"
+      testID="preference-center"
+    >
       <Header text={headerText} theme={theme} />
       <ScrollView style={styles.scrollView} testID="category-list">
         {categories
@@ -138,8 +135,20 @@ interface HeaderProps {
 
 function Header({ text, theme }: HeaderProps): React.ReactElement {
   return (
-    <View style={[styles.header, { borderBottomColor: theme.colors.border, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md }]}>
-      <Text style={[styles.headerText, { color: theme.colors.text, fontSize: theme.fontSize.title }]}>
+    <View
+      style={[
+        styles.header,
+        {
+          borderBottomColor: theme.colors.border,
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.md,
+        },
+      ]}
+    >
+      <Text
+        style={[styles.headerText, { color: theme.colors.text, fontSize: theme.fontSize.title }]}
+        accessibilityRole="header"
+      >
         {text}
       </Text>
     </View>
@@ -173,19 +182,41 @@ function CategoryRow({
   const essentialLabel = translation?.essentialLabel ?? 'Always On';
 
   return (
-    <View style={[styles.categoryRow, { borderBottomColor: theme.colors.border, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md }]}>
+    <View
+      style={[
+        styles.categoryRow,
+        {
+          borderBottomColor: theme.colors.border,
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.md,
+        },
+      ]}
+    >
       <View style={styles.categoryMain}>
         <TouchableOpacity
           style={styles.categoryInfo}
           onPress={() => onToggleExpand(category.id)}
           accessibilityRole="button"
           accessibilityLabel={`${name} details`}
+          accessibilityHint={isExpanded ? 'Collapses category details' : 'Expands category details'}
+          accessibilityState={{ expanded: isExpanded }}
+          testID={`category-details-${category.gtmKey}`}
         >
-          <Text style={[styles.categoryName, { color: theme.colors.text, fontSize: theme.fontSize.body }]}>
+          <Text
+            style={[
+              styles.categoryName,
+              { color: theme.colors.text, fontSize: theme.fontSize.body },
+            ]}
+          >
             {name}
           </Text>
           {description ? (
-            <Text style={[styles.expandIndicator, { color: theme.colors.link, fontSize: theme.fontSize.small }]}>
+            <Text
+              style={[
+                styles.expandIndicator,
+                { color: theme.colors.link, fontSize: theme.fontSize.small },
+              ]}
+            >
               {isExpanded ? 'Hide details' : 'Show details'}
             </Text>
           ) : null}
@@ -193,7 +224,10 @@ function CategoryRow({
         <View style={styles.categoryToggle}>
           {category.alwaysOn ? (
             <Text
-              style={[styles.alwaysOnLabel, { color: theme.colors.toggleOn, fontSize: theme.fontSize.small }]}
+              style={[
+                styles.alwaysOnLabel,
+                { color: theme.colors.toggleOn, fontSize: theme.fontSize.small },
+              ]}
               accessibilityLabel={`${name}: ${essentialLabel}`}
             >
               {essentialLabel}
@@ -203,14 +237,25 @@ function CategoryRow({
               value={isEnabled}
               onValueChange={(value) => onToggle(category.gtmKey, value)}
               trackColor={{ false: theme.colors.toggleOff, true: theme.colors.toggleOn }}
-              accessibilityLabel={`${name}: ${isEnabled ? 'enabled' : 'disabled'}`}
+              accessibilityLabel={name}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isEnabled }}
               testID={`toggle-${category.gtmKey}`}
             />
           )}
         </View>
       </View>
       {isExpanded && description ? (
-        <Text style={[styles.categoryDescription, { color: theme.colors.text, fontSize: theme.fontSize.small, marginTop: theme.spacing.sm }]}>
+        <Text
+          style={[
+            styles.categoryDescription,
+            {
+              color: theme.colors.text,
+              fontSize: theme.fontSize.small,
+              marginTop: theme.spacing.sm,
+            },
+          ]}
+        >
           {description}
         </Text>
       ) : null}
@@ -228,16 +273,27 @@ interface TrackingDetailsProps {
 
 function TrackingDetails({ category, theme }: TrackingDetailsProps): React.ReactElement {
   return (
-    <View style={[styles.trackingDetails, { marginTop: theme.spacing.sm }]} testID={`tracking-details-${category.gtmKey}`}>
+    <View
+      style={[styles.trackingDetails, { marginTop: theme.spacing.sm }]}
+      testID={`tracking-details-${category.gtmKey}`}
+    >
       {category.cookiePatterns.length > 0 && (
         <View style={styles.trackingSection}>
-          <Text style={[styles.trackingLabel, { color: theme.colors.text, fontSize: theme.fontSize.small }]}>
+          <Text
+            style={[
+              styles.trackingLabel,
+              { color: theme.colors.text, fontSize: theme.fontSize.small },
+            ]}
+          >
             Cookie Patterns:
           </Text>
           {category.cookiePatterns.map((pattern, idx) => (
             <Text
               key={`${category.id}-pattern-${idx}`}
-              style={[styles.trackingItem, { color: theme.colors.text, fontSize: theme.fontSize.small }]}
+              style={[
+                styles.trackingItem,
+                { color: theme.colors.text, fontSize: theme.fontSize.small },
+              ]}
             >
               {pattern}
             </Text>
@@ -246,13 +302,21 @@ function TrackingDetails({ category, theme }: TrackingDetailsProps): React.React
       )}
       {category.uuids.length > 0 && (
         <View style={styles.trackingSection}>
-          <Text style={[styles.trackingLabel, { color: theme.colors.text, fontSize: theme.fontSize.small }]}>
+          <Text
+            style={[
+              styles.trackingLabel,
+              { color: theme.colors.text, fontSize: theme.fontSize.small },
+            ]}
+          >
             Vendor IDs:
           </Text>
           {category.uuids.map((uuid, idx) => (
             <Text
               key={`${category.id}-uuid-${idx}`}
-              style={[styles.trackingItem, { color: theme.colors.text, fontSize: theme.fontSize.small }]}
+              style={[
+                styles.trackingItem,
+                { color: theme.colors.text, fontSize: theme.fontSize.small },
+              ]}
             >
               {uuid}
             </Text>
@@ -271,7 +335,16 @@ interface FooterProps {
 
 function Footer({ theme, onSave, onCancel }: FooterProps): React.ReactElement {
   return (
-    <View style={[styles.footer, { borderTopColor: theme.colors.border, paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md }]}>
+    <View
+      style={[
+        styles.footer,
+        {
+          borderTopColor: theme.colors.border,
+          paddingHorizontal: theme.spacing.lg,
+          paddingVertical: theme.spacing.md,
+        },
+      ]}
+    >
       <TouchableOpacity
         style={[
           styles.footerButton,
@@ -286,7 +359,12 @@ function Footer({ theme, onSave, onCancel }: FooterProps): React.ReactElement {
         accessibilityLabel="Save preferences"
         testID="save-button"
       >
-        <Text style={[styles.footerButtonText, { color: theme.colors.buttonPrimaryText, fontSize: theme.fontSize.button }]}>
+        <Text
+          style={[
+            styles.footerButtonText,
+            { color: theme.colors.buttonPrimaryText, fontSize: theme.fontSize.button },
+          ]}
+        >
           Save
         </Text>
       </TouchableOpacity>
@@ -305,7 +383,12 @@ function Footer({ theme, onSave, onCancel }: FooterProps): React.ReactElement {
         accessibilityLabel="Cancel"
         testID="cancel-button"
       >
-        <Text style={[styles.footerButtonText, { color: theme.colors.buttonSecondaryText, fontSize: theme.fontSize.button }]}>
+        <Text
+          style={[
+            styles.footerButtonText,
+            { color: theme.colors.buttonSecondaryText, fontSize: theme.fontSize.button },
+          ]}
+        >
           Cancel
         </Text>
       </TouchableOpacity>

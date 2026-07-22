@@ -6,8 +6,11 @@ import { APIExerciseScreen } from './src/screens/APIExerciseScreen';
 import { StateInspectorScreen } from './src/screens/StateInspectorScreen';
 import { BannerScreen } from './src/screens/BannerScreen';
 import { NetworkScreen } from './src/screens/NetworkScreen';
+import { installE2EFetchFixtures } from './src/utils/e2eFetchFixtures';
 
 const Tab = createBottomTabNavigator();
+
+installE2EFetchFixtures();
 
 function TabIcon({ label }: { label: string }): React.JSX.Element {
   return <Text style={{ fontSize: 18 }}>{label}</Text>;
@@ -30,6 +33,8 @@ export function App(): React.JSX.Element {
           options={{
             title: 'API Exercise',
             tabBarIcon: () => <TabIcon label={'\u{1F527}'} />,
+            tabBarAccessibilityLabel: 'API Exercise tab',
+            tabBarTestID: 'tab-api',
           }}
         />
         <Tab.Screen
@@ -38,6 +43,8 @@ export function App(): React.JSX.Element {
           options={{
             title: 'State Inspector',
             tabBarIcon: () => <TabIcon label={'\u{1F50D}'} />,
+            tabBarAccessibilityLabel: 'State Inspector tab',
+            tabBarTestID: 'tab-state',
           }}
         />
         <Tab.Screen
@@ -46,6 +53,8 @@ export function App(): React.JSX.Element {
           options={{
             title: 'Banner',
             tabBarIcon: () => <TabIcon label={'\u{1F4CB}'} />,
+            tabBarAccessibilityLabel: 'Banner tab',
+            tabBarTestID: 'tab-banner',
           }}
         />
         <Tab.Screen
@@ -54,6 +63,8 @@ export function App(): React.JSX.Element {
           options={{
             title: 'Network',
             tabBarIcon: () => <TabIcon label={'\u{1F4E1}'} />,
+            tabBarAccessibilityLabel: 'Network tab',
+            tabBarTestID: 'tab-network',
           }}
         />
       </Tab.Navigator>

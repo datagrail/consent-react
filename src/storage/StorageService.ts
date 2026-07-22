@@ -1,7 +1,4 @@
-// Must be imported before `uuid` — installs crypto.getRandomValues, which
-// Hermes doesn't provide natively, so uuid's v4() has a secure RNG to use.
-import 'react-native-get-random-values';
-import { v4 as uuidv4 } from 'uuid';
+import { generateUuidV4 } from './uuid';
 import { MMKV } from 'react-native-mmkv';
 import type { ConsentPreferences, ConsentConfig } from '../types';
 import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
@@ -36,7 +33,7 @@ export class StorageService {
   getOrCreateUniqueId(): string {
     const existing = this.storage.getString(STORAGE_KEYS.UNIQUE_ID);
     if (existing !== undefined) return existing;
-    const id = uuidv4();
+    const id = generateUuidV4();
     this.storage.set(STORAGE_KEYS.UNIQUE_ID, id);
     return id;
   }

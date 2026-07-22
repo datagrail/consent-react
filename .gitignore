@@ -12,4 +12,25 @@ test-client/ios/*.xcworkspace/
 test-client/ios/.xcode.env.local
 test-client/android/build/
 test-client/android/app/build/
+test-client/android/app/.cxx/
 test-client/android/.gradle/
+
+# Android (SDK) build output
+android/build/
+android/.gradle/
+android/.cxx/
+*.iml
+local.properties
+
+# CocoaPods / Xcode build output (test-client and elsewhere)
+Pods/
+ios/build/
+build/
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Maestro visual artifacts
+test-client/e2e/screenshots/*.png
+test-client/e2e/debug/
+test-client/e2e/*.xml

@@ -1,11 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Animated,
-  StyleSheet,
-  Dimensions,
-  AccessibilityInfo,
-} from 'react-native';
+import { View, Animated, StyleSheet, Dimensions, AccessibilityInfo } from 'react-native';
 import type {
   BannerProps,
   ConsentConfig,
@@ -29,7 +23,11 @@ import * as ConsentManager from '../ConsentManager';
  * Renders text, buttons, links from remote config.
  * Supports position variants, animations, and accessibility.
  */
-export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): React.ReactElement | null {
+export function Banner({
+  onConsentSaved,
+  onDismiss,
+  locale,
+}: BannerProps): React.ReactElement | null {
   const config = ConsentManager.getConfig();
   const theme = useTheme(config);
   const [currentLayerId, setCurrentLayerId] = useState<string | null>(null);
@@ -64,11 +62,13 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
 
   // Check reduce motion preference
   useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      setReduceMotion(enabled);
-    }).catch(() => {
-      // Default to no reduce motion
-    });
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((enabled) => {
+        setReduceMotion(enabled);
+      })
+      .catch(() => {
+        // Default to no reduce motion
+      });
   }, []);
 
   // Run animation when visible changes
@@ -86,56 +86,59 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
     }
   }, [visible, reduceMotion, animValue]);
 
-  const handleButtonAction = useCallback(async (action: ButtonAction, element: ConsentLayerElement) => {
-    switch (action) {
-      case 'accept_all': {
-        await ConsentManager.acceptAll();
-        const prefs = ConsentManager.getPreferences();
-        if (prefs && onConsentSaved) {
-          onConsentSaved(prefs);
+  const handleButtonAction = useCallback(
+    async (action: ButtonAction, element: ConsentLayerElement) => {
+      switch (action) {
+        case 'accept_all': {
+          await ConsentManager.acceptAll();
+          const prefs = ConsentManager.getPreferences();
+          if (prefs && onConsentSaved) {
+            onConsentSaved(prefs);
+          }
+          setVisible(false);
+          break;
         }
-        setVisible(false);
-        break;
-      }
-      case 'reject_all': {
-        await ConsentManager.rejectAll();
-        const prefs = ConsentManager.getPreferences();
-        if (prefs && onConsentSaved) {
-          onConsentSaved(prefs);
+        case 'reject_all': {
+          await ConsentManager.rejectAll();
+          const prefs = ConsentManager.getPreferences();
+          if (prefs && onConsentSaved) {
+            onConsentSaved(prefs);
+          }
+          setVisible(false);
+          break;
         }
-        setVisible(false);
-        break;
-      }
-      case 'save_preferences':
-      case 'custom': {
-        const preferences: ConsentPreferences = {
-          isCustomised: true,
-          cookieOptions: Object.entries(enabledCategories).map(([gtmKey, isEnabled]) => ({
-            gtmKey,
-            isEnabled,
-          })),
-        };
-        await ConsentManager.savePreferences(preferences);
-        if (onConsentSaved) {
-          onConsentSaved(preferences);
+        case 'save_preferences':
+        case 'custom': {
+          const preferences: ConsentPreferences = {
+            isCustomised: true,
+            cookieOptions: Object.entries(enabledCategories).map(([gtmKey, isEnabled]) => ({
+              gtmKey,
+              isEnabled,
+            })),
+          };
+          await ConsentManager.savePreferences(preferences);
+          if (onConsentSaved) {
+            onConsentSaved(preferences);
+          }
+          setVisible(false);
+          break;
         }
-        setVisible(false);
-        break;
-      }
-      case 'open_layer': {
-        const targetLayer = element.targetConsentLayer;
-        if (targetLayer) {
-          setCurrentLayerId(targetLayer);
+        case 'open_layer': {
+          const targetLayer = element.targetConsentLayer;
+          if (targetLayer) {
+            setCurrentLayerId(targetLayer);
+          }
+          break;
         }
-        break;
+        case 'noop': {
+          onDismiss?.();
+          setVisible(false);
+          break;
+        }
       }
-      case 'noop': {
-        onDismiss?.();
-        setVisible(false);
-        break;
-      }
-    }
-  }, [enabledCategories, onConsentSaved, onDismiss]);
+    },
+    [enabledCategories, onConsentSaved, onDismiss],
+  );
 
   const handleCategoryToggle = useCallback((gtmKey: string, enabled: boolean) => {
     setEnabledCategories((prev) => ({ ...prev, [gtmKey]: enabled }));
@@ -172,11 +175,12 @@ export function Banner({ onConsentSaved, onDismiss, locale }: BannerProps): Reac
           { transform: positionStyle.transform },
         ]}
         accessibilityRole="alert"
+        accessibilityLabel="Privacy consent dialog"
+        accessibilityViewIsModal
+        importantForAccessibility="yes"
         testID="banner-container"
       >
-        {layer.showCloseButton && (
-          <CloseButton onPress={handleDismiss} theme={theme} />
-        )}
+        {layer.showCloseButton && <CloseButton onPress={handleDismiss} theme={theme} />}
         {sortedElements.map((element) => (
           <ElementRenderer
             key={element.id}
@@ -262,7 +266,10 @@ function findAllCategories(config: ConsentConfig): ConsentLayerCategory[] {
 
 interface PositionResult {
   containerStyle: Record<string, unknown>;
-  transform: Animated.WithAnimatedValue<{ translateY: Animated.AnimatedInterpolation<number> } | { translateX: Animated.AnimatedInterpolation<number> }>[];
+  transform: Animated.WithAnimatedValue<
+    | { translateY: Animated.AnimatedInterpolation<number> }
+    | { translateX: Animated.AnimatedInterpolation<number> }
+  >[];
 }
 
 function getPositionStyle(

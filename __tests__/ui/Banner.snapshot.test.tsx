@@ -1,17 +1,13 @@
 import React from 'react';
 import { act } from 'react-test-renderer';
 import renderer from 'react-test-renderer';
-import { Appearance, AccessibilityInfo } from 'react-native';
 import { Banner } from '../../src/ui/Banner';
 import type { ConsentConfig } from '../../src/types';
 
-// Use fake timers to prevent Animated.timing cleanup errors
+// Use fake timers to prevent Animated.timing cleanup errors.
+// Appearance and AccessibilityInfo are mocked globally in jest.setup.ts so the
+// reduce-motion effect resolves synchronously inside act().
 jest.useFakeTimers();
-
-// Mock Appearance and AccessibilityInfo to avoid async state update warnings
-jest.spyOn(Appearance, 'getColorScheme').mockReturnValue('light');
-jest.spyOn(Appearance, 'addChangeListener').mockReturnValue({ remove: jest.fn() });
-jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
 
 jest.mock('../../src/ConsentManager', () => ({
   getConfig: jest.fn(),

@@ -10,8 +10,9 @@ interface TextElementProps {
 
 export function TextElement({ text, style, theme }: TextElementProps): React.ReactElement {
   const textStyle = getTextStyle(style, theme);
+  const isHeading = style === 'dg-title' || style === 'dg-header';
   return (
-    <Text style={textStyle} accessibilityRole="text">
+    <Text style={textStyle} accessibilityRole={isHeading ? 'header' : 'text'}>
       {text}
     </Text>
   );

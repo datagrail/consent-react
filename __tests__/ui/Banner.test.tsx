@@ -4,6 +4,11 @@ import { Linking } from 'react-native';
 import { Banner } from '../../src/ui/Banner';
 import type { ConsentConfig, ConsentPreferences } from '../../src/types';
 
+// Fake timers so the banner's entrance Animated.timing (300ms) completes inside
+// the test rather than firing a state update after teardown (act warning).
+// Appearance/AccessibilityInfo are mocked globally in jest.setup.ts.
+jest.useFakeTimers();
+
 jest.mock('../../src/ConsentManager', () => ({
   getConfig: jest.fn(),
   getCategories: jest.fn(),
@@ -97,7 +102,12 @@ const testConfig: ConsentConfig = {
                 id: 'link-1',
                 order: 1,
                 translations: {
-                  en: { id: 'lt1', locale: 'en', text: 'Privacy Policy', url: 'https://example.com/privacy' },
+                  en: {
+                    id: 'lt1',
+                    locale: 'en',
+                    text: 'Privacy Policy',
+                    url: 'https://example.com/privacy',
+                  },
                 },
               },
             ],
@@ -174,7 +184,13 @@ const testConfig: ConsentConfig = {
                 uuids: [],
                 cookiePatterns: [],
                 translations: {
-                  en: { id: 'ct1', locale: 'en', name: 'Essential', description: 'Required cookies', essentialLabel: 'Always On' },
+                  en: {
+                    id: 'ct1',
+                    locale: 'en',
+                    name: 'Essential',
+                    description: 'Required cookies',
+                    essentialLabel: 'Always On',
+                  },
                 },
                 showTrackingDetailsLink: false,
               },
@@ -189,7 +205,12 @@ const testConfig: ConsentConfig = {
                 uuids: ['vendor-1'],
                 cookiePatterns: ['_fbp$'],
                 translations: {
-                  en: { id: 'ct2', locale: 'en', name: 'Marketing', description: 'Advertising cookies' },
+                  en: {
+                    id: 'ct2',
+                    locale: 'en',
+                    name: 'Marketing',
+                    description: 'Advertising cookies',
+                  },
                 },
                 showTrackingDetailsLink: false,
               },
@@ -352,11 +373,13 @@ describe('Banner', () => {
     ConsentManager.getConfig.mockReturnValue(configWithCustomAction);
 
     const onConsentSaved = jest.fn();
-    const { getByText, getByLabelText } = render(<Banner locale="en" onConsentSaved={onConsentSaved} />);
+    const { getByText, getByLabelText } = render(
+      <Banner locale="en" onConsentSaved={onConsentSaved} />,
+    );
 
     // Navigate to second layer and turn off the marketing category
     fireEvent.press(getByText('Manage Preferences'));
-    fireEvent(getByLabelText('Marketing: enabled'), 'valueChange', false);
+    fireEvent(getByLabelText('Marketing'), 'valueChange', false);
     fireEvent.press(getByText('Save Preferences'));
 
     await waitFor(() => {
@@ -375,9 +398,11 @@ describe('Banner', () => {
   });
 
   it('renders accessibility labels on buttons', () => {
-    const { getByLabelText } = render(<Banner locale="en" />);
+    const { getByLabelText, getByTestId } = render(<Banner locale="en" />);
     expect(getByLabelText('Accept All')).toBeTruthy();
     expect(getByLabelText('Reject All')).toBeTruthy();
+    expect(getByTestId('banner-action-accept-all')).toBeTruthy();
+    expect(getByTestId('banner-action-reject-all')).toBeTruthy();
   });
 
   it('uses provided locale for translations', () => {

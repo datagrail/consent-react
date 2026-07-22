@@ -10,8 +10,14 @@ interface ButtonElementProps {
   onPress: (action: ButtonAction) => void;
 }
 
-export function ButtonElement({ text, action, theme, onPress }: ButtonElementProps): React.ReactElement {
+export function ButtonElement({
+  text,
+  action,
+  theme,
+  onPress,
+}: ButtonElementProps): React.ReactElement {
   const isPrimary = action === 'accept_all' || action === 'custom';
+  const actionTestId = `banner-action-${action.replace(/_/g, '-')}`;
 
   const buttonStyle = [
     styles.button,
@@ -37,6 +43,7 @@ export function ButtonElement({ text, action, theme, onPress }: ButtonElementPro
       onPress={() => onPress(action)}
       accessibilityRole="button"
       accessibilityLabel={text}
+      testID={actionTestId}
     >
       <Text style={textStyle}>{text}</Text>
     </TouchableOpacity>

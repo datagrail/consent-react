@@ -33,16 +33,24 @@ export function CategoryElement({
         return (
           <View
             key={category.id}
-            style={[styles.row, { borderBottomColor: theme.colors.border, paddingVertical: theme.spacing.sm }]}
+            style={[
+              styles.row,
+              { borderBottomColor: theme.colors.border, paddingVertical: theme.spacing.sm },
+            ]}
           >
             <View style={styles.info}>
-              <Text style={[styles.name, { color: theme.colors.text, fontSize: theme.fontSize.body }]}>
+              <Text
+                style={[styles.name, { color: theme.colors.text, fontSize: theme.fontSize.body }]}
+              >
                 {name}
               </Text>
             </View>
             {category.alwaysOn ? (
               <Text
-                style={[styles.alwaysOn, { color: theme.colors.toggleOn, fontSize: theme.fontSize.small }]}
+                style={[
+                  styles.alwaysOn,
+                  { color: theme.colors.toggleOn, fontSize: theme.fontSize.small },
+                ]}
                 accessibilityLabel={`${name}: ${essentialLabel}`}
               >
                 {essentialLabel}
@@ -52,7 +60,10 @@ export function CategoryElement({
                 value={isEnabled}
                 onValueChange={(value) => onToggle(category.gtmKey, value)}
                 trackColor={{ false: theme.colors.toggleOff, true: theme.colors.toggleOn }}
-                accessibilityLabel={`${name}: ${isEnabled ? 'enabled' : 'disabled'}`}
+                accessibilityLabel={name}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: isEnabled }}
+                testID={`banner-toggle-${category.gtmKey}`}
               />
             )}
           </View>
