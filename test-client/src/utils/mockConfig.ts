@@ -10,15 +10,23 @@ export const STAGING_CONFIG_VERSION_ID = 'b17d1e73-6d35-4ae3-9199-ff2e98d8926a';
 
 export const DEFAULT_CONFIG_URL = `${STAGING_HOST}/consent/${STAGING_CUSTOMER_ID}/${STAGING_CONFIG_VERSION_ID}/config.json`;
 
-export const TEST_CATEGORIES = ['analytics', 'marketing', 'functional', 'essential'] as const;
+// Keys must match the gtm_keys served by test-config.json, so savePreferences()
+// in the API exercise screen persists categories the SDK's isCategoryEnabled /
+// getPreferences reads can actually find.
+export const TEST_CATEGORIES = [
+  'dg-category-essential',
+  'dg-category-marketing',
+  'dg-category-performance',
+  'dg-category-functional',
+] as const;
 
 export const DEFAULT_PREFERENCES_JSON = JSON.stringify(
   {
     isCustomised: true,
     cookieOptions: [
-      { gtmKey: 'analytics', isEnabled: true },
-      { gtmKey: 'marketing', isEnabled: false },
-      { gtmKey: 'functional', isEnabled: true },
+      { gtmKey: 'dg-category-marketing', isEnabled: true },
+      { gtmKey: 'dg-category-performance', isEnabled: false },
+      { gtmKey: 'dg-category-functional', isEnabled: true },
     ],
   },
   null,
