@@ -46,9 +46,11 @@ Semver. Pre-1.0 the API may still shift, so:
 ## What ships
 
 The published tarball is the library only — `src/`, built `lib/`, native
-`ios/` and `android/src/`, the Expo plugin, the podspec, `README.md`, and
-`LICENSE`. The `test-client/` app and `android/build` artifacts are excluded via
-the `files` allowlist in `package.json`. Verify before tagging with:
+`ios/` and the `android/` module (Kotlin source under `android/src/` plus
+`android/build.gradle.kts`), the Expo plugin, the podspec, `README.md`, and
+`LICENSE`. The `test-client/` app and `android/build` / `.gradle` / `.cxx`
+artifacts are excluded via the `files` allowlist in `package.json`. Verify
+before tagging with:
 
 ```bash
 npm pack --dry-run
