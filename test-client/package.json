@@ -8,9 +8,9 @@
     "android": "react-native run-android",
     "typecheck": "tsc --noEmit",
     "build:sdk": "npm --prefix .. run build",
-    "start:lib": "npm run build:sdk && USE_BUILT_LIB=1 react-native start --reset-cache",
-    "ios:lib": "npm run build:sdk && USE_BUILT_LIB=1 react-native run-ios",
-    "android:lib": "npm run build:sdk && USE_BUILT_LIB=1 react-native run-android"
+    "start:lib": "npm run build:sdk && cross-env USE_BUILT_LIB=1 react-native start --reset-cache",
+    "ios:lib": "npm run build:sdk && cross-env USE_BUILT_LIB=1 react-native run-ios",
+    "android:lib": "npm run build:sdk && cross-env USE_BUILT_LIB=1 react-native run-android"
   },
   "dependencies": {
     "@datagrail/react-native-consent": "file:..",
@@ -28,11 +28,12 @@
     "@babel/preset-env": "^7.24.0",
     "@babel/runtime": "^7.24.0",
     "@react-native-community/cli": "^15.0.0",
-    "@react-native-community/cli-platform-ios": "^15.0.0",
     "@react-native-community/cli-platform-android": "^15.0.0",
+    "@react-native-community/cli-platform-ios": "^15.0.0",
     "@react-native/babel-preset": "^0.76.0",
     "@react-native/metro-config": "^0.76.0",
     "@types/react": "^18.2.0",
+    "cross-env": "^10.1.0",
     "typescript": "^5.4.0"
   },
   "overrides": {
