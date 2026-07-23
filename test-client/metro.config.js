@@ -14,9 +14,12 @@ const sdkBuiltEntry = path.resolve(sdkRoot, 'lib/module/index.js');
 
 const config = getDefaultConfig(projectRoot);
 
-// Watch the parent SDK for live reloading — src/ in source mode, lib/ when
-// running against the build so a rebuild refreshes the app.
-config.watchFolders = [useBuiltLib ? path.resolve(sdkRoot, 'lib') : sdkRoot];
+// Watch the whole parent SDK for live reloading. This must stay sdkRoot (not
+// just lib/) even in built-lib mode: Metro can only serve files under a watched
+// root, and RN's dev-mode react-refresh runtime is resolved from the SDK root's
+// node_modules. Narrowing to lib/ would leave react-refresh unresolvable. The
+// resolveRequest redirect below is what actually forces SDK imports to lib/.
+config.watchFolders = [sdkRoot];
 
 // Resolve modules from both test-client and parent SDK node_modules
 config.resolver.nodeModulesPaths = [
