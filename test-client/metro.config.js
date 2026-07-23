@@ -4,9 +4,21 @@ const { getDefaultConfig } = require('@react-native/metro-config');
 const projectRoot = __dirname;
 const sdkRoot = path.resolve(projectRoot, '..');
 
+// When USE_BUILT_LIB is set, resolve the SDK to its built output (lib/) instead
+// of the raw TypeScript source, so the app exercises exactly what npm ships.
+// Otherwise (default) run against src/ with live reloading. See `resolveRequest`
+// below for the redirect and the `*:lib` scripts in package.json.
+const useBuiltLib = !!process.env.USE_BUILT_LIB;
+const SDK_PACKAGE = '@datagrail/react-native-consent';
+const sdkBuiltEntry = path.resolve(sdkRoot, 'lib/module/index.js');
+
 const config = getDefaultConfig(projectRoot);
 
-// Watch the parent SDK source for live reloading
+// Watch the whole parent SDK for live reloading. This must stay sdkRoot (not
+// just lib/) even in built-lib mode: Metro can only serve files under a watched
+// root, and RN's dev-mode react-refresh runtime is resolved from the SDK root's
+// node_modules. Narrowing to lib/ would leave react-refresh unresolvable. The
+// resolveRequest redirect below is what actually forces SDK imports to lib/.
 config.watchFolders = [sdkRoot];
 
 // Resolve modules from both test-client and parent SDK node_modules
@@ -37,13 +49,14 @@ config.resolver.extraNodeModules = {
 const dedupedPackages = ['react', 'react-native'];
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Force the SDK's package entry to the built output. Only the bare specifier
+  // is redirected; subpath imports (none today) would fall through unchanged.
+  if (useBuiltLib && moduleName === SDK_PACKAGE) {
+    return context.resolveRequest(context, sdkBuiltEntry, platform);
+  }
   for (const pkg of dedupedPackages) {
     if (moduleName === pkg || moduleName.startsWith(`${pkg}/`)) {
-      const redirected = path.join(
-        projectRoot,
-        'node_modules',
-        moduleName,
-      );
+      const redirected = path.join(projectRoot, 'node_modules', moduleName);
       return context.resolveRequest(context, redirected, platform);
     }
   }

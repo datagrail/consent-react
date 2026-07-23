@@ -17,7 +17,10 @@
     "!**/__fixtures__",
     "!**/__mocks__",
     "*.podspec",
-    "!lib/typescript/test-client"
+    "!lib/typescript/test-client",
+    "!android/build",
+    "!android/.gradle",
+    "!android/.cxx"
   ],
   "scripts": {
     "build": "bob build",
@@ -28,7 +31,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:integration": "jest --config jest.integration.config.js",
-    "prepare": "echo skipping build"
+    "prepare": "npm run build"
   },
   "keywords": [
     "react-native",
