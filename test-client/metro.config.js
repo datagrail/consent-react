@@ -4,10 +4,19 @@ const { getDefaultConfig } = require('@react-native/metro-config');
 const projectRoot = __dirname;
 const sdkRoot = path.resolve(projectRoot, '..');
 
+// When USE_BUILT_LIB is set, resolve the SDK to its built output (lib/) instead
+// of the raw TypeScript source, so the app exercises exactly what npm ships.
+// Otherwise (default) run against src/ with live reloading. See `resolveRequest`
+// below for the redirect and the `*:lib` scripts in package.json.
+const useBuiltLib = !!process.env.USE_BUILT_LIB;
+const SDK_PACKAGE = '@datagrail/react-native-consent';
+const sdkBuiltEntry = path.resolve(sdkRoot, 'lib/module/index.js');
+
 const config = getDefaultConfig(projectRoot);
 
-// Watch the parent SDK source for live reloading
-config.watchFolders = [sdkRoot];
+// Watch the parent SDK for live reloading — src/ in source mode, lib/ when
+// running against the build so a rebuild refreshes the app.
+config.watchFolders = [useBuiltLib ? path.resolve(sdkRoot, 'lib') : sdkRoot];
 
 // Resolve modules from both test-client and parent SDK node_modules
 config.resolver.nodeModulesPaths = [
@@ -37,13 +46,14 @@ config.resolver.extraNodeModules = {
 const dedupedPackages = ['react', 'react-native'];
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Force the SDK's package entry to the built output. Only the bare specifier
+  // is redirected; subpath imports (none today) would fall through unchanged.
+  if (useBuiltLib && moduleName === SDK_PACKAGE) {
+    return context.resolveRequest(context, sdkBuiltEntry, platform);
+  }
   for (const pkg of dedupedPackages) {
     if (moduleName === pkg || moduleName.startsWith(`${pkg}/`)) {
-      const redirected = path.join(
-        projectRoot,
-        'node_modules',
-        moduleName,
-      );
+      const redirected = path.join(projectRoot, 'node_modules', moduleName);
       return context.resolveRequest(context, redirected, platform);
     }
   }

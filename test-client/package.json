@@ -6,7 +6,11 @@
     "start": "react-native start",
     "ios": "react-native run-ios",
     "android": "react-native run-android",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:sdk": "npm --prefix .. run build",
+    "start:lib": "npm run build:sdk && USE_BUILT_LIB=1 react-native start --reset-cache",
+    "ios:lib": "npm run build:sdk && USE_BUILT_LIB=1 react-native run-ios",
+    "android:lib": "npm run build:sdk && USE_BUILT_LIB=1 react-native run-android"
   },
   "dependencies": {
     "@datagrail/react-native-consent": "file:..",
