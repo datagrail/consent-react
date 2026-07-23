@@ -50,10 +50,11 @@ The published tarball is the library only — `src/`, built `lib/`, native
 `android/build.gradle.kts`), the Expo plugin, the podspec, `README.md`, and
 `LICENSE`. The `test-client/` app and `android/build` / `.gradle` / `.cxx`
 artifacts are excluded via the `files` allowlist in `package.json`. Verify
-before tagging with:
+before tagging with a fresh build — `npm pack --dry-run` silently omits every
+`lib/` entry if `lib/` is stale or missing, so build first:
 
 ```bash
-npm pack --dry-run
+npm run build && npm pack --dry-run
 ```
 
 ## If a publish fails
