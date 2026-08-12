@@ -31,7 +31,7 @@
     "@react-native-community/cli-platform-android": "^15.0.0",
     "@react-native-community/cli-platform-ios": "^15.0.0",
     "@react-native/babel-preset": "^0.76.0",
-    "@react-native/metro-config": "^0.76.0",
+    "@react-native/metro-config": "^0.87.0",
     "@types/react": "^18.2.0",
     "cross-env": "^10.1.0",
     "typescript": "^5.4.0"
