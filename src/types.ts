@@ -227,7 +227,13 @@ export type ConsentErrorCode =
    * against a config that does not enable it. Distinct from INVALID_CONFIGURATION, which is
    * about the SDK's own initialize() options, and never worth retrying.
    */
-  | 'VALIDATION_ERROR';
+  | 'VALIDATION_ERROR'
+  /**
+   * A native module failed for a reason that is not the caller's input — an unlinked module,
+   * or an unexpected error crossing the bridge. Kept separate from VALIDATION_ERROR so a
+   * bridge failure does not read as a caller bug: this one may be worth retrying.
+   */
+  | 'NATIVE_ERROR';
 
 export class ConsentError extends Error {
   readonly code: ConsentErrorCode;

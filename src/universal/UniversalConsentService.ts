@@ -12,8 +12,13 @@ import type {
 const PLATFORM = 'react-native';
 
 /**
- * Raw wire shape of a `GET /universal_consent` response. snake_case, mirroring the config
- * endpoint's convention — parsed into the camelCase {@link UniversalConsentRecord}.
+ * Raw wire shape of a `GET /universal_consent` response, parsed into the camelCase
+ * {@link UniversalConsentRecord}.
+ *
+ * Only the TOP-LEVEL keys are snake_case, mirroring the config endpoint's convention. The nested
+ * `consent_preferences` object is camelCase inside (`isCustomised`, `cookieOptions`) because it
+ * is stored and returned verbatim as the web SDK wrote it. Not a typo — do not "fix" either half
+ * without changing the backend and the other SDKs.
  */
 interface RawUniversalConsentRecord {
   status?: string;

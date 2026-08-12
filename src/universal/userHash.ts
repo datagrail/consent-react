@@ -8,9 +8,12 @@ interface DataGrailConsentCryptoModule {
 function getNativeModule(): DataGrailConsentCryptoModule {
   const module = NativeModules.DataGrailConsentCrypto as DataGrailConsentCryptoModule | undefined;
   if (!module) {
+    // NATIVE_ERROR, not NOT_INITIALIZED: this is a build problem (Expo Go, react-native-web, or
+    // a missing pod install), and telling the integrator to call initialize() again would send
+    // them somewhere that cannot help.
     throw new ConsentError(
-      'NOT_INITIALIZED',
-      'DataGrailConsentCrypto native module not found. Make sure the native module is linked correctly.',
+      'NATIVE_ERROR',
+      'DataGrailConsentCrypto native module not found. Make sure the native module is linked correctly — Universal Consent requires a native build (no Expo Go or react-native-web).',
     );
   }
   return module;
@@ -34,6 +37,8 @@ function getNativeModule(): DataGrailConsentCryptoModule {
  *
  * @throws ConsentError with code `VALIDATION_ERROR` when the identifier is empty after
  *   normalizing — that hash would be the tenant prefix alone, shared by every such caller.
+ * @throws ConsentError with code `NATIVE_ERROR` when the module is unlinked or the bridge call
+ *   fails for any other reason.
  */
 export async function computeUserHash(
   customerId: string,
@@ -54,7 +59,9 @@ export async function computeUserHash(
         'identifier must not be empty after normalization',
       );
     }
+    // Anything else came from the bridge, not from the caller. NATIVE_ERROR rather than
+    // VALIDATION_ERROR so an integrator is not told their input was bad when it wasn't.
     const message = error instanceof Error ? error.message : 'Failed to compute user hash';
-    throw new ConsentError('VALIDATION_ERROR', message);
+    throw new ConsentError('NATIVE_ERROR', message);
   }
 }

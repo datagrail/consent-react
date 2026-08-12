@@ -454,7 +454,7 @@ Check that:
 
 ### "DataGrailConsentCrypto native module not found"
 
-Universal Consent hashes the user identifier in a native module, so it needs a development build — it cannot run in Expo Go or on React Native Web.
+Universal Consent hashes the user identifier in a native module, so it needs a development build — it cannot run in Expo Go or on React Native Web. This surfaces as a `ConsentError` with code `NATIVE_ERROR`.
 
 - Run `cd ios && pod install` after installing or upgrading the package.
 - On Expo, run `npx expo prebuild` and use a development build rather than Expo Go.

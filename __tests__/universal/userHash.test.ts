@@ -51,23 +51,28 @@ describe('computeUserHash', () => {
     });
   });
 
-  it('surfaces other native rejections as VALIDATION_ERROR preserving the message', async () => {
+  it('surfaces other native rejections as NATIVE_ERROR preserving the message', async () => {
+    // Not VALIDATION_ERROR: a bridge failure is not a caller-input problem, and labelling it as
+    // one tells an integrator "your input was bad, do not retry" about something that may be
+    // transient.
     mockComputeUserHash.mockRejectedValue(new Error('bridge exploded'));
 
     await expect(computeUserHash('cust', 'proj', 'user@example.com')).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
+      code: 'NATIVE_ERROR',
       message: 'bridge exploded',
     });
   });
 
-  it('throws NOT_INITIALIZED when the native module is not linked', async () => {
+  it('throws NATIVE_ERROR when the native module is not linked', async () => {
+    // An unlinked module is a build problem — Expo Go, react-native-web, or a missing pod
+    // install — so NOT_INITIALIZED would point the integrator at initialize(), which cannot help.
     delete (NativeModules as Record<string, unknown>).DataGrailConsentCrypto;
 
     await expect(computeUserHash('cust', 'proj', 'user@example.com')).rejects.toBeInstanceOf(
       ConsentError,
     );
     await expect(computeUserHash('cust', 'proj', 'user@example.com')).rejects.toMatchObject({
-      code: 'NOT_INITIALIZED',
+      code: 'NATIVE_ERROR',
     });
   });
 });

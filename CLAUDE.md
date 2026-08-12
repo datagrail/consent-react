@@ -122,6 +122,11 @@ backend. Do not change any of these without changing all of them:
   `1fee132c298d615098190e3e75f9c7e05db20d6cff6398f686fcebc67d1d87a4`.
 - **Empty identifiers are rejected** (`VALIDATION_ERROR`). Hashing a bare `{customerId}:{projectId}:`
   prefix collapses every empty-or-whitespace caller in the tenant onto one consent record.
+- **`VALIDATION_ERROR` means the caller's input was bad; `NATIVE_ERROR` means the bridge failed.**
+  Only the empty-identifier case and a missing `consentProjectId` are `VALIDATION_ERROR`. An
+  unlinked `DataGrailConsentCrypto` (Expo Go, RN Web, missing `pod install`) or any other native
+  rejection is `NATIVE_ERROR` — do not collapse the two, or integrators get told their input was
+  wrong and not to retry when neither is true.
 - **`cookieOptions` is a MAP** `{ key: bool }` on the wire, both read and write — unlike the local
   `ConsentPreferences`, which is an array of `CategoryConsent`.
 - **Reads are unsigned.** Only writes carry `X-DG-Signature` / `X-DG-Timestamp` (unix seconds) /
