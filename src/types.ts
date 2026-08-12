@@ -32,6 +32,23 @@ export interface ConsentConfig {
   gppUsNat: boolean;
   initialCategories: InitialCategories;
   layout: Layout;
+  /**
+   * Consent project identifier, used as part of the Universal Consent user-hash salt.
+   * Optional because configs published before Universal Consent existed do not carry it.
+   */
+  consentProjectId?: string;
+  /** Universal Consent feature flags. Absent on configs published before the feature existed. */
+  universalConsent?: UniversalConsentConfig;
+}
+
+/**
+ * Universal Consent feature flags, published under the `universalConsent` config key.
+ */
+export interface UniversalConsentConfig {
+  /** Whether cross-device Universal Consent is turned on for this container. */
+  enabled: boolean;
+  /** Whether CCPA/US opt-out state should be synced to the universal record. */
+  syncOptout: boolean;
 }
 
 export type ConsentMode = 'optin' | 'optout' | 'informational';
@@ -204,7 +221,13 @@ export type ConsentErrorCode =
   | 'NETWORK_ERROR'
   | 'PARSE_ERROR'
   | 'STORAGE_ERROR'
-  | 'TIMEOUT';
+  | 'TIMEOUT'
+  /**
+   * A caller-supplied value is unusable — an empty identifier, or Universal Consent used
+   * against a config that does not enable it. Distinct from INVALID_CONFIGURATION, which is
+   * about the SDK's own initialize() options, and never worth retrying.
+   */
+  | 'VALIDATION_ERROR';
 
 export class ConsentError extends Error {
   readonly code: ConsentErrorCode;
@@ -218,11 +241,7 @@ export class ConsentError extends Error {
 
 // --- ATT Types (iOS only) ---
 
-export type ATTStatus =
-  | 'notDetermined'
-  | 'restricted'
-  | 'denied'
-  | 'authorized';
+export type ATTStatus = 'notDetermined' | 'restricted' | 'denied' | 'authorized';
 
 // --- WebView Types ---
 

@@ -12,5 +12,5 @@ Pod::Spec.new do |s|
   s.platforms    = { :ios => "14.0" }
   s.source_files = "ios/**/*.{h,m,mm,swift}"
   s.dependency "React-Core"
-  s.frameworks   = "AppTrackingTransparency"
+  s.frameworks   = "AppTrackingTransparency", "CryptoKit"
 end

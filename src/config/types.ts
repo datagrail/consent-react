@@ -35,6 +35,15 @@ export interface RawConsentConfig {
     optout: string[];
   };
   layout: RawLayout;
+  /**
+   * Universal Consent fields. Optional — configs published before the feature existed omit
+   * both, and parsing must keep working for them.
+   */
+  consentProjectId?: string | null;
+  universalConsent?: {
+    enabled?: boolean;
+    sync_optout?: boolean;
+  } | null;
 }
 
 export interface RawLayout {
