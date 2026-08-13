@@ -502,7 +502,10 @@ describe('ConsentManager — Universal Consent', () => {
       expect(posts).toHaveLength(0);
     });
 
-    it('suppresses non-essential categories in the written state when the signal is denied', async () => {
+    it('writes the raw local state even when the signal is denied', async () => {
+      // The store holds raw choices and the server never merges, so suppressing here would
+      // persist this device's transient ATT state as the user's choice — for every device on
+      // their identifier. Suppression belongs to the read path.
       const fetchMock = mockFetchSequence(universalConfigJson, notFound(), response(200, ''));
       await initUniversal();
 
@@ -517,9 +520,9 @@ describe('ConsentManager — Universal Consent', () => {
       // `dg-category-mystery-category` comes from the consent layers rather than `initial`.
       expect(body.consent_preferences.cookieOptions).toEqual({
         'dg-category-essential': true,
-        'dg-category-marketing': false,
-        'dg-category-performance': false,
-        'dg-category-functional': false,
+        'dg-category-marketing': true,
+        'dg-category-performance': true,
+        'dg-category-functional': true,
         'dg-category-mystery-category': false,
       });
     });
@@ -536,6 +539,37 @@ describe('ConsentManager — Universal Consent', () => {
 
       const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
       expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
+    });
+
+    it('writes the raw stored record, not the view the signal suppressed locally', async () => {
+      // The compounding case. Rehydration persists the SUPPRESSED state locally, so a write that
+      // sourced its payload from getCategories() afterwards would read that suppression back and
+      // store it as consent — erasing a web opt-in for every device on the identifier the first
+      // time the app opens with ATT denied.
+      const fetchMock = mockFetchSequence(
+        universalConfigJson,
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': true },
+          },
+        }),
+        response(200, ''),
+      );
+      await initUniversal();
+
+      await setUserIdentifier('user@example.com', {
+        apiKey: API_KEY,
+        getSignature,
+        trackingSignal: 'denied',
+      });
+
+      // The user's real opt-in survives onto the wire...
+      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
+      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
+      // ...while local reads still honor this device's signal.
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
     });
 
     it('never derives ccpa_optout from the device tracking signal', async () => {
@@ -555,14 +589,16 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     it('reads the device signal itself when the caller does not pass one', async () => {
-      const fetchMock = mockFetchSequence(universalConfigJson, notFound(), response(200, ''));
+      // The signal reaches LOCAL state, never the write — so this asserts on what rehydration
+      // persisted rather than on the payload.
+      mockFetchSequence(universalConfigJson, found(), response(200, ''));
       await initUniversal();
       mockReadTrackingSignal.mockReturnValue('denied');
 
       await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
 
-      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
-      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
     });
 
     it('propagates a write failure', async () => {

@@ -284,15 +284,46 @@ export async function rehydrateFromUniversalConsent(
   apiKey: string,
   trackingSignal: ATTStatus = readTrackingSignal(),
 ): Promise<boolean> {
+  return (await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal)) !== null;
+}
+
+/**
+ * Rehydrate, and hand back the RAW preferences from the stored record.
+ *
+ * Same behavior as `rehydrateFromUniversalConsent`, except the return value carries the record's
+ * raw preferences (or `null` on a miss) rather than a boolean. `setUserIdentifier` needs this:
+ * rehydration deliberately persists the RECONCILED view locally, so a write that sourced its
+ * payload from `getCategories()` afterwards would read that suppression back and store it in the
+ * cross-device record as though the user had chosen it. Returning the raw map lets the write carry
+ * what the user actually consented to.
+ *
+ * Internal — the public surface keeps the boolean-returning shape.
+ */
+async function rehydrateReturningRawPreferences(
+  identifier: string,
+  apiKey: string,
+  trackingSignal: ATTStatus,
+): Promise<Record<string, boolean> | null> {
   assertUniversalConsentEnabled();
 
-  const record = await fetchUniversalConsent(identifier, apiKey, trackingSignal);
-  const cookieOptions = record?.consentPreferences?.cookieOptions;
+  // Goes to the service directly rather than through fetchUniversalConsent, which returns an
+  // already-reconciled record. Both views are needed here: the reconciled one to persist locally,
+  // the raw one to hand back for the write.
+  const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
+  const rawCookieOptions = record?.consentPreferences?.cookieOptions;
 
   // An empty map carries no category state to apply. Saving it would store preferences with
   // nothing in them, and because isCategoryEnabled() defaults an unknown key to false, that
   // reads back as a blanket opt-out the user never made — while also hiding the banner.
-  if (!cookieOptions || Object.keys(cookieOptions).length === 0) return false;
+  if (!rawCookieOptions || Object.keys(rawCookieOptions).length === 0) return null;
+
+  // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
+  // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
+  const cookieOptions = reconcileSignals(
+    rawCookieOptions,
+    record!.gpc || signalSuppressesNonEssential(trackingSignal),
+    new Set(ConsentResolver.getEssentialCategories(currentConfig!)),
+  );
 
   const preferences: ConsentPreferences = {
     // A record that came back at all represents an answered prompt, so the rehydrated state is
@@ -315,7 +346,7 @@ export async function rehydrateFromUniversalConsent(
   storageService!.setUserConsented(true);
 
   eventEmitter.emit(preferences);
-  return true;
+  return rawCookieOptions;
 }
 
 /**
@@ -325,6 +356,13 @@ export async function rehydrateFromUniversalConsent(
  * persists the user's actual cross-device state rather than clobbering a richer server-side
  * record with whatever this fresh install happens to hold locally. A read failure does not block
  * the write — someone who just answered the banner still needs their choice saved.
+ *
+ * The read applies the tracking signal to LOCAL state; the write carries the user's RAW
+ * preferences. The store holds raw choices and the server never merges, so a device signal must
+ * never change what is stored cross-device — otherwise opening the app with ATT denied would erase
+ * a marketing opt-in the user made on the web, for every device on their identifier, and a later
+ * session without the signal would read it back as a revocation they never made. Suppression is a
+ * read-time view (see `fetchUniversalConsent`).
  *
  * The SDK computes the user hash and reconciles signals on-device, but does NOT compute the
  * HMAC. It invokes `getSignature` — which calls your own backend — to obtain
@@ -343,8 +381,12 @@ export async function setUserIdentifier(
   const { apiKey, getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
 
+  // The RAW preferences off the record, when one was found. Rehydration persists the reconciled
+  // view locally, so letting the write fall back to getCategories() would read that suppressed
+  // state back and store it as the user's choice.
+  let rawPreferences: Record<string, boolean> | null = null;
   try {
-    await rehydrateFromUniversalConsent(identifier, apiKey, trackingSignal);
+    rawPreferences = await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal);
   } catch (error: unknown) {
     // Swallowed deliberately — see the read-then-write note above. A VALIDATION_ERROR is the
     // exception: an empty identifier or a missing consentProjectId would fail the write the same
@@ -358,14 +400,9 @@ export async function setUserIdentifier(
     rawMap[option.gtmKey] = option.isEnabled;
   }
 
-  const essentialKeys = new Set(ConsentResolver.getEssentialCategories(currentConfig!));
   const universalPrefs: UniversalConsentPreferences = {
     isCustomised: current?.isCustomised ?? false,
-    cookieOptions: reconcileSignals(
-      rawMap,
-      signalSuppressesNonEssential(trackingSignal),
-      essentialKeys,
-    ),
+    cookieOptions: rawPreferences ?? rawMap,
   };
 
   await universalConsentService!.save(
