@@ -104,9 +104,7 @@ describe('ConfigService', () => {
     it('should parse consent layer categories with snake_case fields', () => {
       const config = ConfigService.parseConfig(testConfigJson);
       const layer = config.layout.consentLayers['26259ccb-e5e0-4305-b696-fa2b7413c239'];
-      const categoryElement = layer.elements.find(
-        (e) => e.type === 'ConsentLayerCategoryElement',
-      );
+      const categoryElement = layer.elements.find((e) => e.type === 'ConsentLayerCategoryElement');
 
       expect(categoryElement).toBeDefined();
       expect(categoryElement!.consentLayerCategories).toBeDefined();
@@ -123,9 +121,7 @@ describe('ConfigService', () => {
     it('should convert essential_label to essentialLabel on category translations', () => {
       const config = ConfigService.parseConfig(testConfigJson);
       const layer = config.layout.consentLayers['26259ccb-e5e0-4305-b696-fa2b7413c239'];
-      const categoryElement = layer.elements.find(
-        (e) => e.type === 'ConsentLayerCategoryElement',
-      );
+      const categoryElement = layer.elements.find((e) => e.type === 'ConsentLayerCategoryElement');
 
       const essential = categoryElement!.consentLayerCategories![0];
       expect(essential.translations['en'].essentialLabel).toBe('Always On');
@@ -137,9 +133,7 @@ describe('ConfigService', () => {
     it('should handle tracking_details_link_translations as array', () => {
       const config = ConfigService.parseConfig(testConfigJson);
       const layer = config.layout.consentLayers['26259ccb-e5e0-4305-b696-fa2b7413c239'];
-      const categoryElement = layer.elements.find(
-        (e) => e.type === 'ConsentLayerCategoryElement',
-      );
+      const categoryElement = layer.elements.find((e) => e.type === 'ConsentLayerCategoryElement');
 
       // The fixture has it as an array with locale field
       expect(categoryElement!.trackingDetailsLinkTranslations).toBeDefined();
@@ -178,6 +172,48 @@ describe('ConfigService', () => {
       expect(() => ConfigService.parseConfig('not-json{')).toThrow(ConsentError);
       expect(() => ConfigService.parseConfig('not-json{')).toThrow('Failed to parse config JSON');
     });
+
+    describe('universal consent fields', () => {
+      it('should omit both fields for a config published before universal consent existed', () => {
+        // Omitted rather than set to `undefined` — the fixture has neither field, and assigning
+        // `undefined` explicitly breaks exactOptionalPropertyTypes consumers.
+        const config = ConfigService.parseConfig(testConfigJson);
+
+        expect(config).not.toHaveProperty('consentProjectId');
+        expect(config).not.toHaveProperty('universalConsent');
+      });
+
+      it('should parse consentProjectId and universalConsent when present', () => {
+        const raw = JSON.parse(testConfigJson);
+        raw.consentProjectId = 'proj_abc123';
+        raw.universalConsent = { enabled: true, sync_optout: true };
+
+        const config = ConfigService.parseConfig(JSON.stringify(raw));
+
+        expect(config.consentProjectId).toBe('proj_abc123');
+        expect(config.universalConsent).toEqual({ enabled: true, syncOptout: true });
+      });
+
+      it('should default both universalConsent flags to false when absent', () => {
+        const raw = JSON.parse(testConfigJson);
+        raw.universalConsent = {};
+
+        const config = ConfigService.parseConfig(JSON.stringify(raw));
+
+        expect(config.universalConsent).toEqual({ enabled: false, syncOptout: false });
+      });
+
+      it('should omit universalConsent when the wire value is null', () => {
+        const raw = JSON.parse(testConfigJson);
+        raw.consentProjectId = null;
+        raw.universalConsent = null;
+
+        const config = ConfigService.parseConfig(JSON.stringify(raw));
+
+        expect(config).not.toHaveProperty('consentProjectId');
+        expect(config).not.toHaveProperty('universalConsent');
+      });
+    });
   });
 
   describe('fetchConfig', () => {
@@ -189,8 +225,7 @@ describe('ConfigService', () => {
         status: 200,
         text: () => Promise.resolve(data),
         headers: {
-          forEach: (cb: (v: string, k: string) => void) =>
-            mockHeaders.forEach((v, k) => cb(v, k)),
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
         },
       });
     }
@@ -251,8 +286,7 @@ describe('ConfigService', () => {
         status: 404,
         text: () => Promise.resolve('Not Found'),
         headers: {
-          forEach: (cb: (v: string, k: string) => void) =>
-            mockHeaders.forEach((v, k) => cb(v, k)),
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
         },
       });
 
