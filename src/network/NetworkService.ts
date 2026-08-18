@@ -53,7 +53,11 @@ export class NetworkService {
         headers: responseHeaders,
       };
     } catch (error: unknown) {
-      if (error instanceof Error && error.name === 'AbortError') {
+      // A timed-out request is aborted via `controller.abort()`. Some runtimes
+      // (Hermes/RN) reject the fetch with a DOMException that is not
+      // `instanceof Error`, so the name check alone would misreport a timeout as
+      // NETWORK_ERROR. `signal.aborted` is the reliable signal.
+      if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         throw new ConsentError('TIMEOUT', `Request to ${url} timed out after ${timeoutMs}ms`);
       }
       const message = error instanceof Error ? error.message : 'Network request failed';
