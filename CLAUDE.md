@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-DataGrail React Native Consent SDK — `@datagrail/react-native-consent`. Open-source (Apache License, Version 2.0), TypeScript-first privacy consent management for React Native 0.76+ (New Architecture only — TurboModules/Fabric).
+DataGrail React Native Consent SDK — `@datagrail.io/react-native-consent`. Open-source (Apache License, Version 2.0), TypeScript-first privacy consent management for React Native 0.76+ (New Architecture only — TurboModules/Fabric).
 
 Feature parity with `consent-ios` (Swift) and `consent-android` (Kotlin) native SDKs. Synchronous consent reads via MMKV, offline queue, exponential backoff retry, config-driven banner UI.
 
@@ -64,6 +64,7 @@ npm run build                 # Build with react-native-builder-bob
 ## API Contracts
 
 All public API matches native SDKs (see `src/index.ts` for the full export list):
+
 - `initialize(config: DataGrailConfig): Promise<void>`
 - `showBanner(): void` — UI trigger no-op; actual display is the `Banner` component's job
 - `isCategoryEnabled(category: string): boolean` — synchronous
@@ -87,6 +88,7 @@ the `Banner`/`PreferenceCenter` UI components.
 ## Backend Endpoints
 
 All relative to `https://{privacyDomain}/`:
+
 - `GET {configUrl}` — fetch config JSON (save_open tracks impressions)
 - `GET /save_open?dg_customer_id=X&consent_id=Y&config_version=Z&timestamp=T` — track banner shown
 - `POST /save_preferences` — body: `{ dg_customer_id, consent_id, config_version, is_customised, cookie_options: [{gtm_key, is_enabled}], timestamp }`

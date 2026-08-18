@@ -3,7 +3,7 @@
  * We re-export all types from the SDK source so TypeScript resolves them
  * without needing to type-check the entire SDK source tree.
  */
-declare module '@datagrail/react-native-consent' {
+declare module '@datagrail.io/react-native-consent' {
   export interface ConsentPreferences {
     isCustomised: boolean;
     cookieOptions: CategoryConsent[];
@@ -30,11 +30,7 @@ declare module '@datagrail/react-native-consent' {
     constructor(code: ConsentErrorCode, message: string);
   }
 
-  export type ATTStatus =
-    | 'notDetermined'
-    | 'restricted'
-    | 'denied'
-    | 'authorized';
+  export type ATTStatus = 'notDetermined' | 'restricted' | 'denied' | 'authorized';
 
   export interface WebViewConsentPayload {
     consentId: string;

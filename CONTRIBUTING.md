@@ -1,4 +1,4 @@
-# Contributing to @datagrail/react-native-consent
+# Contributing to @datagrail.io/react-native-consent
 
 Thank you for your interest in contributing! This document covers how to set up the project for development and our expectations for contributions.
 

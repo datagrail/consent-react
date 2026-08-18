@@ -19,8 +19,8 @@ import {
   getConsentPayloadForWebView,
   getConsentInjectionScript,
   trackBannerShown,
-} from '@datagrail/react-native-consent';
-import type { ConsentPreferences } from '@datagrail/react-native-consent';
+} from '@datagrail.io/react-native-consent';
+import type { ConsentPreferences } from '@datagrail.io/react-native-consent';
 import { ResultDisplay } from '../components/ResultDisplay';
 import type { ResultValue } from '../components/ResultDisplay';
 import { DEFAULT_CONFIG_URL, DEFAULT_PREFERENCES_JSON } from '../utils/mockConfig';

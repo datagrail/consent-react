@@ -1,6 +1,6 @@
 # Releasing
 
-`@datagrail/react-native-consent` publishes to the public npm registry from a
+`@datagrail.io/react-native-consent` publishes to the public npm registry from a
 tag push. The [`Publish` workflow](.github/workflows/publish.yml) builds, tests,
 and runs `npm publish --provenance --access public` whenever a `v*` tag lands on
 `main`.
@@ -26,7 +26,7 @@ and runs `npm publish --provenance --access public` whenever a `v*` tag lands on
    ```
 4. Watch the `Publish` workflow in the Actions tab. On success the version is
    live on npm.
-5. Confirm: `npm view @datagrail/react-native-consent version`.
+5. Confirm: `npm view @datagrail.io/react-native-consent version`.
 
 > The tag drives the release, but npm publishes whatever `version` is in
 > `package.json` at that commit. Keep the tag and `package.json` version in
