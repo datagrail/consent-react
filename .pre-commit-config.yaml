@@ -1,4 +1,4 @@
-# Pre-commit hooks for @datagrail/react-native-consent.
+# Pre-commit hooks for @datagrail.io/react-native-consent.
 #   Setup:  pre-commit install
 #   Manual: pre-commit run --all-files
 minimum_pre_commit_version: '3.5.0'

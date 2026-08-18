@@ -1,6 +1,6 @@
-# @datagrail/react-native-consent
+# @datagrail.io/react-native-consent
 
-[![npm version](https://img.shields.io/npm/v/@datagrail/react-native-consent.svg)](https://www.npmjs.com/package/@datagrail/react-native-consent)
+[![npm version](https://img.shields.io/npm/v/@datagrail.io/react-native-consent.svg)](https://www.npmjs.com/package/@datagrail.io/react-native-consent)
 [![CI](https://github.com/datagrail/react-native-consent/actions/workflows/ci.yml/badge.svg)](https://github.com/datagrail/react-native-consent/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
@@ -20,7 +20,7 @@ Privacy consent management SDK for React Native 0.76+ (New Architecture). Config
 ## Installation
 
 ```bash
-npm install @datagrail/react-native-consent
+npm install @datagrail.io/react-native-consent
 ```
 
 For iOS, install CocoaPods dependencies:
@@ -39,8 +39,8 @@ import {
   needsConsent,
   isCategoryEnabled,
   onConsentChanged,
-} from '@datagrail/react-native-consent';
-import { Banner } from '@datagrail/react-native-consent';
+} from '@datagrail.io/react-native-consent';
+import { Banner } from '@datagrail.io/react-native-consent';
 
 // Initialize at app startup
 await initialize({
@@ -67,37 +67,37 @@ const unsubscribe = onConsentChanged((preferences) => {
 
 ### Core Methods
 
-| Method | Parameters | Return Type | Description |
-|--------|-----------|-------------|-------------|
-| `initialize` | `config: DataGrailConfig` | `Promise<void>` | Initialize the SDK. Must be called before all other methods. |
-| `needsConsent` | — | `boolean` | Whether the consent banner should be displayed. |
-| `showBanner` | — | `void` | Trigger banner display (delegates to UI layer). |
-| `isCategoryEnabled` | `category: string` | `boolean` | Synchronously check if a consent category is enabled. |
-| `getPreferences` | — | `ConsentPreferences \| null` | Get current saved consent preferences. |
-| `getCategories` | — | `ConsentPreferences \| null` | Get consent categories (saved or defaults from config). |
-| `getConfig` | — | `ConsentConfig \| null` | Get the parsed remote configuration. |
-| `savePreferences` | `prefs: ConsentPreferences` | `Promise<void>` | Save consent preferences and sync to backend. |
-| `acceptAll` | — | `Promise<void>` | Accept all consent categories. |
-| `rejectAll` | — | `Promise<void>` | Reject all non-essential categories. |
-| `onConsentChanged` | `listener: ConsentChangeListener` | `Unsubscribe` | Subscribe to consent changes. Returns unsubscribe function. |
-| `reset` | — | `void` | Clear all stored consent state and reset SDK. |
-| `hasUserConsent` | — | `boolean` | Whether the user has previously made a consent choice. |
-| `retryPendingRequests` | — | `Promise<{ success: number; failed: number }>` | Manually retry queued network requests. |
-| `trackBannerShown` | — | `Promise<void>` | Send analytics event that banner was displayed. |
+| Method                 | Parameters                        | Return Type                                    | Description                                                  |
+| ---------------------- | --------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| `initialize`           | `config: DataGrailConfig`         | `Promise<void>`                                | Initialize the SDK. Must be called before all other methods. |
+| `needsConsent`         | —                                 | `boolean`                                      | Whether the consent banner should be displayed.              |
+| `showBanner`           | —                                 | `void`                                         | Trigger banner display (delegates to UI layer).              |
+| `isCategoryEnabled`    | `category: string`                | `boolean`                                      | Synchronously check if a consent category is enabled.        |
+| `getPreferences`       | —                                 | `ConsentPreferences \| null`                   | Get current saved consent preferences.                       |
+| `getCategories`        | —                                 | `ConsentPreferences \| null`                   | Get consent categories (saved or defaults from config).      |
+| `getConfig`            | —                                 | `ConsentConfig \| null`                        | Get the parsed remote configuration.                         |
+| `savePreferences`      | `prefs: ConsentPreferences`       | `Promise<void>`                                | Save consent preferences and sync to backend.                |
+| `acceptAll`            | —                                 | `Promise<void>`                                | Accept all consent categories.                               |
+| `rejectAll`            | —                                 | `Promise<void>`                                | Reject all non-essential categories.                         |
+| `onConsentChanged`     | `listener: ConsentChangeListener` | `Unsubscribe`                                  | Subscribe to consent changes. Returns unsubscribe function.  |
+| `reset`                | —                                 | `void`                                         | Clear all stored consent state and reset SDK.                |
+| `hasUserConsent`       | —                                 | `boolean`                                      | Whether the user has previously made a consent choice.       |
+| `retryPendingRequests` | —                                 | `Promise<{ success: number; failed: number }>` | Manually retry queued network requests.                      |
+| `trackBannerShown`     | —                                 | `Promise<void>`                                | Send analytics event that banner was displayed.              |
 
 ### ATT Methods (iOS)
 
-| Method | Parameters | Return Type | Description |
-|--------|-----------|-------------|-------------|
-| `requestTrackingAuthorization` | — | `Promise<ATTStatus>` | Prompt iOS ATT dialog and persist resulting consent. |
-| `getTrackingStatus` | — | `ATTStatus` | Get current ATT status synchronously. |
+| Method                         | Parameters | Return Type          | Description                                          |
+| ------------------------------ | ---------- | -------------------- | ---------------------------------------------------- |
+| `requestTrackingAuthorization` | —          | `Promise<ATTStatus>` | Prompt iOS ATT dialog and persist resulting consent. |
+| `getTrackingStatus`            | —          | `ATTStatus`          | Get current ATT status synchronously.                |
 
 ### WebView Methods
 
-| Method | Parameters | Return Type | Description |
-|--------|-----------|-------------|-------------|
-| `getConsentPayloadForWebView` | — | `WebViewConsentPayload` | Get structured consent payload for WebView injection. |
-| `getConsentInjectionScript` | — | `string` | Get injectable JavaScript that sets `window.__dgConsent`. |
+| Method                        | Parameters | Return Type             | Description                                               |
+| ----------------------------- | ---------- | ----------------------- | --------------------------------------------------------- |
+| `getConsentPayloadForWebView` | —          | `WebViewConsentPayload` | Get structured consent payload for WebView injection.     |
+| `getConsentInjectionScript`   | —          | `string`                | Get injectable JavaScript that sets `window.__dgConsent`. |
 
 ### Types
 
@@ -136,7 +136,7 @@ interface WebViewConsentPayload {
 Config-driven consent banner that renders based on your DataGrail layout configuration.
 
 ```typescript
-import { Banner } from '@datagrail/react-native-consent';
+import { Banner } from '@datagrail.io/react-native-consent';
 
 <Banner
   onConsentSaved={(preferences) => console.log('Saved:', preferences)}
@@ -146,19 +146,19 @@ import { Banner } from '@datagrail/react-native-consent';
 />
 ```
 
-| Prop | Type | Description |
-|------|------|-------------|
+| Prop             | Type                                        | Description                                      |
+| ---------------- | ------------------------------------------- | ------------------------------------------------ |
 | `onConsentSaved` | `(preferences: ConsentPreferences) => void` | Called after preferences are saved via banner UI |
-| `onDismiss` | `() => void` | Called when banner is dismissed without saving |
-| `locale` | `string` | Override locale (default: device locale) |
-| `displayStyle` | `'modal' \| 'fullScreen'` | Override display style |
+| `onDismiss`      | `() => void`                                | Called when banner is dismissed without saving   |
+| `locale`         | `string`                                    | Override locale (default: device locale)         |
+| `displayStyle`   | `'modal' \| 'fullScreen'`                   | Override display style                           |
 
 ### PreferenceCenter
 
 Category toggle UI for granular consent management.
 
 ```typescript
-import { PreferenceCenter } from '@datagrail/react-native-consent';
+import { PreferenceCenter } from '@datagrail.io/react-native-consent';
 
 <PreferenceCenter
   onSave={(preferences) => console.log('Saved:', preferences)}
@@ -167,12 +167,12 @@ import { PreferenceCenter } from '@datagrail/react-native-consent';
 />
 ```
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `onSave` | `(preferences: ConsentPreferences) => void` | Called after preferences are saved |
-| `onCancel` | `() => void` | Called when user cancels |
-| `locale` | `string` | Override locale |
-| `showTrackingDetails` | `boolean` | Show tracking details expansion |
+| Prop                  | Type                                        | Description                        |
+| --------------------- | ------------------------------------------- | ---------------------------------- |
+| `onSave`              | `(preferences: ConsentPreferences) => void` | Called after preferences are saved |
+| `onCancel`            | `() => void`                                | Called when user cancels           |
+| `locale`              | `string`                                    | Override locale                    |
+| `showTrackingDetails` | `boolean`                                   | Show tracking details expansion    |
 
 ## ATT Integration
 
@@ -190,7 +190,10 @@ Add `NSUserTrackingUsageDescription` to your `ios/<app>/Info.plist`:
 ### 2. Request authorization
 
 ```typescript
-import { requestTrackingAuthorization, getTrackingStatus } from '@datagrail/react-native-consent';
+import {
+  requestTrackingAuthorization,
+  getTrackingStatus,
+} from '@datagrail.io/react-native-consent';
 
 // Prompt the user (shows native iOS dialog)
 const status = await requestTrackingAuthorization();
@@ -211,7 +214,7 @@ const currentStatus = getTrackingStatus();
 Inject consent state into WebViews so your web content respects the same consent choices:
 
 ```typescript
-import { getConsentInjectionScript } from '@datagrail/react-native-consent';
+import { getConsentInjectionScript } from '@datagrail.io/react-native-consent';
 import { WebView } from 'react-native-webview';
 
 function MyWebView() {
@@ -227,6 +230,7 @@ function MyWebView() {
 ```
 
 The injection script sets:
+
 - `window.__dgConsent` — full consent payload object
 - `window.__dgConsentReady` — boolean flag
 - Dispatches a `dgConsentReady` CustomEvent on `document`
@@ -250,9 +254,12 @@ Add to your `app.json` or `app.config.js`:
 {
   "expo": {
     "plugins": [
-      ["@datagrail/react-native-consent/expo-plugin", {
-        "trackingDescription": "We use tracking to personalize your experience."
-      }]
+      [
+        "@datagrail.io/react-native-consent/expo-plugin",
+        {
+          "trackingDescription": "We use tracking to personalize your experience."
+        }
+      ]
     ]
   }
 }
@@ -310,6 +317,7 @@ Run `cd ios && pod install` after installing the package. If you see architectur
 ### Banner not showing
 
 Check that:
+
 1. `needsConsent()` returns `true`
 2. Your config has `showBanner: true`
 3. The `<Banner />` component is rendered in your component tree

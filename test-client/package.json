@@ -13,7 +13,7 @@
     "android:lib": "npm run build:sdk && cross-env USE_BUILT_LIB=1 react-native run-android"
   },
   "dependencies": {
-    "@datagrail/react-native-consent": "file:..",
+    "@datagrail.io/react-native-consent": "file:..",
     "@react-navigation/bottom-tabs": "^6.5.0",
     "@react-navigation/native": "^6.1.0",
     "react": "18.3.1",

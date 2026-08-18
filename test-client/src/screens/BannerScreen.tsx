@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { Banner, PreferenceCenter } from '@datagrail/react-native-consent';
-import type { ConsentPreferences } from '@datagrail/react-native-consent';
+import { Banner, PreferenceCenter } from '@datagrail.io/react-native-consent';
+import type { ConsentPreferences } from '@datagrail.io/react-native-consent';
 import { EventLog } from '../components/EventLog';
 import { createLogEntry } from '../utils/mockConfig';
 import type { LogEntry } from '../utils/mockConfig';

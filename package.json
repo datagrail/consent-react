@@ -1,6 +1,6 @@
 {
-  "name": "@datagrail/react-native-consent",
-  "version": "0.1.0-alpha.1",
+  "name": "@datagrail.io/react-native-consent",
+  "version": "1.0.0",
   "description": "DataGrail Consent SDK for React Native — privacy consent management with synchronous reads",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -31,7 +31,9 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:integration": "jest --config jest.integration.config.js",
-    "prepare": "npm run build"
+    "build:plugin": "tsc -p expo-plugin/tsconfig.json",
+    "prepare": "npm run build && npm run build:plugin",
+    "prepack": "npm run build && npm run build:plugin"
   },
   "keywords": [
     "react-native",
@@ -43,20 +45,22 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/datagrail/react-native-consent.git"
+    "url": "https://github.com/datagrail/consent-react.git"
   },
   "author": "DataGrail <engineering@datagrail.io>",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/datagrail/react-native-consent/issues"
+    "url": "https://github.com/datagrail/consent-react/issues"
   },
-  "homepage": "https://github.com/datagrail/react-native-consent#readme",
+  "homepage": "https://github.com/datagrail/consent-react#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.24.0",
     "@babel/preset-typescript": "^7.24.0",
+    "@expo/config-plugins": "^9.0.0",
+    "@expo/config-types": "^53.0.0",
     "@react-native/eslint-config": "^0.76.0",
     "@testing-library/react-native": "^12.4.0",
     "@types/jest": "^29.5.12",

@@ -1,6 +1,6 @@
 # Migration from Native SDKs
 
-This guide helps customers migrate from the native iOS/Android DataGrail consent SDKs to `@datagrail/react-native-consent`.
+This guide helps customers migrate from the native iOS/Android DataGrail consent SDKs to `@datagrail.io/react-native-consent`.
 
 ## Overview
 
@@ -8,20 +8,21 @@ The React Native SDK provides equivalent functionality to both native SDKs in a 
 
 ## Concept Mapping
 
-| Native SDK Concept | React Native Equivalent |
-|-------------------|------------------------|
-| `DataGrailConsent.configure(...)` | `initialize({ configUrl })` |
-| Delegate/callback pattern | `onConsentChanged(listener)` |
-| `DataGrailConsent.shared` singleton | Module-level functions (no instance needed) |
-| `ConsentManager.getConsentStatus(category:)` | `isCategoryEnabled(category)` |
-| UI presented via native view controllers | `<Banner />` and `<PreferenceCenter />` React components |
-| NSUserDefaults / SharedPreferences | MMKV (faster, synchronous) |
+| Native SDK Concept                           | React Native Equivalent                                  |
+| -------------------------------------------- | -------------------------------------------------------- |
+| `DataGrailConsent.configure(...)`            | `initialize({ configUrl })`                              |
+| Delegate/callback pattern                    | `onConsentChanged(listener)`                             |
+| `DataGrailConsent.shared` singleton          | Module-level functions (no instance needed)              |
+| `ConsentManager.getConsentStatus(category:)` | `isCategoryEnabled(category)`                            |
+| UI presented via native view controllers     | `<Banner />` and `<PreferenceCenter />` React components |
+| NSUserDefaults / SharedPreferences           | MMKV (faster, synchronous)                               |
 
 ## Storage Compatibility
 
 The React Native SDK uses MMKV for storage with the same key structure as the native SDKs. **Consent preferences from the native SDK are not automatically migrated** — the MMKV storage is independent.
 
 When migrating:
+
 - Users will see the consent banner once after the migration (since MMKV starts empty)
 - After they interact with it, their preferences are stored in MMKV going forward
 - No data loss occurs — the backend already has their historical consent records
@@ -32,32 +33,32 @@ If you need to preserve local consent state during migration, you can read from 
 
 ### iOS (Swift) to React Native
 
-| iOS SDK | React Native SDK | Notes |
-|---------|-----------------|-------|
-| `DataGrailConsent.configure(url:)` | `initialize({ configUrl })` | Now returns a Promise |
-| `DataGrailConsent.shared.needsConsent()` | `needsConsent()` | Same behavior |
-| `DataGrailConsent.shared.showBanner()` | Render `<Banner />` component | Declarative vs imperative |
-| `DataGrailConsent.shared.isCategoryEnabled(_:)` | `isCategoryEnabled(category)` | Same — synchronous |
-| `DataGrailConsent.shared.acceptAll()` | `acceptAll()` | Now returns Promise |
-| `DataGrailConsent.shared.rejectAll()` | `rejectAll()` | Now returns Promise |
-| `DataGrailConsent.shared.savePreferences(_:)` | `savePreferences(prefs)` | Now returns Promise |
-| `DataGrailConsent.shared.getPreferences()` | `getPreferences()` | Same return shape |
-| `DataGrailConsent.shared.delegate = self` | `onConsentChanged(listener)` | Returns unsubscribe fn |
-| `DataGrailConsent.shared.reset()` | `reset()` | Same behavior |
+| iOS SDK                                          | React Native SDK                 | Notes                         |
+| ------------------------------------------------ | -------------------------------- | ----------------------------- |
+| `DataGrailConsent.configure(url:)`               | `initialize({ configUrl })`      | Now returns a Promise         |
+| `DataGrailConsent.shared.needsConsent()`         | `needsConsent()`                 | Same behavior                 |
+| `DataGrailConsent.shared.showBanner()`           | Render `<Banner />` component    | Declarative vs imperative     |
+| `DataGrailConsent.shared.isCategoryEnabled(_:)`  | `isCategoryEnabled(category)`    | Same — synchronous            |
+| `DataGrailConsent.shared.acceptAll()`            | `acceptAll()`                    | Now returns Promise           |
+| `DataGrailConsent.shared.rejectAll()`            | `rejectAll()`                    | Now returns Promise           |
+| `DataGrailConsent.shared.savePreferences(_:)`    | `savePreferences(prefs)`         | Now returns Promise           |
+| `DataGrailConsent.shared.getPreferences()`       | `getPreferences()`               | Same return shape             |
+| `DataGrailConsent.shared.delegate = self`        | `onConsentChanged(listener)`     | Returns unsubscribe fn        |
+| `DataGrailConsent.shared.reset()`                | `reset()`                        | Same behavior                 |
 | `ATTrackingManager.requestTrackingAuthorization` | `requestTrackingAuthorization()` | Bundled, auto-maps to consent |
 
 ### Android (Kotlin) to React Native
 
-| Android SDK | React Native SDK | Notes |
-|------------|-----------------|-------|
-| `DataGrailConsent.configure(context, url)` | `initialize({ configUrl })` | No context needed |
-| `DataGrailConsent.getInstance().needsConsent()` | `needsConsent()` | Same behavior |
-| `DataGrailConsent.getInstance().showBanner(activity)` | Render `<Banner />` component | Declarative |
-| `DataGrailConsent.getInstance().isCategoryEnabled(cat)` | `isCategoryEnabled(category)` | Same |
-| `DataGrailConsent.getInstance().acceptAll()` | `acceptAll()` | Now returns Promise |
-| `DataGrailConsent.getInstance().rejectAll()` | `rejectAll()` | Now returns Promise |
-| `DataGrailConsent.getInstance().addListener(listener)` | `onConsentChanged(listener)` | Returns unsubscribe fn |
-| `DataGrailConsent.getInstance().reset()` | `reset()` | Same behavior |
+| Android SDK                                             | React Native SDK              | Notes                  |
+| ------------------------------------------------------- | ----------------------------- | ---------------------- |
+| `DataGrailConsent.configure(context, url)`              | `initialize({ configUrl })`   | No context needed      |
+| `DataGrailConsent.getInstance().needsConsent()`         | `needsConsent()`              | Same behavior          |
+| `DataGrailConsent.getInstance().showBanner(activity)`   | Render `<Banner />` component | Declarative            |
+| `DataGrailConsent.getInstance().isCategoryEnabled(cat)` | `isCategoryEnabled(category)` | Same                   |
+| `DataGrailConsent.getInstance().acceptAll()`            | `acceptAll()`                 | Now returns Promise    |
+| `DataGrailConsent.getInstance().rejectAll()`            | `rejectAll()`                 | Now returns Promise    |
+| `DataGrailConsent.getInstance().addListener(listener)`  | `onConsentChanged(listener)`  | Returns unsubscribe fn |
+| `DataGrailConsent.getInstance().reset()`                | `reset()`                     | Same behavior          |
 
 ## Breaking Differences
 
@@ -66,6 +67,7 @@ If you need to preserve local consent state during migration, you can read from 
 The native SDKs configure synchronously (with background fetch). The RN SDK's `initialize()` is async and must be awaited before other methods work.
 
 **Before (iOS):**
+
 ```swift
 // Synchronous — other methods work immediately
 DataGrailConsent.configure(url: configUrl)
@@ -73,6 +75,7 @@ let needs = DataGrailConsent.shared.needsConsent()
 ```
 
 **After (React Native):**
+
 ```typescript
 // Must await — throws NOT_INITIALIZED if called too early
 await initialize({ configUrl });
@@ -84,11 +87,13 @@ const needs = needsConsent();
 Native SDKs present banners imperatively. The RN SDK uses React components.
 
 **Before (iOS):**
+
 ```swift
 DataGrailConsent.shared.showBanner() // Presents a UIViewController
 ```
 
 **After (React Native):**
+
 ```typescript
 // Render conditionally in your component tree
 {showBanner && <Banner onConsentSaved={handleSaved} />}
@@ -97,12 +102,14 @@ DataGrailConsent.shared.showBanner() // Presents a UIViewController
 ### 3. Event listeners return unsubscribe functions
 
 **Before (iOS):**
+
 ```swift
 DataGrailConsent.shared.delegate = self
 // Must manually nil out delegate to stop receiving events
 ```
 
 **After (React Native):**
+
 ```typescript
 const unsubscribe = onConsentChanged((prefs) => { ... });
 // Call unsubscribe() when done (e.g., in useEffect cleanup)
@@ -127,11 +134,13 @@ The RN SDK operates at the JavaScript layer — no Android Context or iOS UIView
 ### Step 1: Remove native SDKs
 
 **iOS (Podfile):**
+
 ```diff
 - pod 'DataGrailConsent'
 ```
 
 **Android (build.gradle):**
+
 ```diff
 - implementation 'io.datagrail:consent-android:x.y.z'
 ```
@@ -143,7 +152,7 @@ Delete or comment out native SDK configuration in `AppDelegate.swift` / `MainApp
 ### Step 3: Install the React Native SDK
 
 ```bash
-npm install @datagrail/react-native-consent
+npm install @datagrail.io/react-native-consent
 cd ios && pod install
 ```
 
@@ -151,7 +160,7 @@ cd ios && pod install
 
 ```typescript
 // App.tsx or your app entry point
-import { initialize } from '@datagrail/react-native-consent';
+import { initialize } from '@datagrail.io/react-native-consent';
 
 // Use the same config URL as your native SDKs
 await initialize({
@@ -164,7 +173,7 @@ await initialize({
 Find all native consent checks and replace with the RN equivalent:
 
 ```typescript
-import { isCategoryEnabled } from '@datagrail/react-native-consent';
+import { isCategoryEnabled } from '@datagrail.io/react-native-consent';
 
 // Replaces: DataGrailConsent.shared.isCategoryEnabled("analytics")
 if (isCategoryEnabled('dg-category-analytics')) {
@@ -177,8 +186,8 @@ if (isCategoryEnabled('dg-category-analytics')) {
 Remove native banner presentation and use the React component:
 
 ```typescript
-import { needsConsent } from '@datagrail/react-native-consent';
-import { Banner } from '@datagrail/react-native-consent';
+import { needsConsent } from '@datagrail.io/react-native-consent';
+import { Banner } from '@datagrail.io/react-native-consent';
 
 function App() {
   const [showBanner, setShowBanner] = useState(needsConsent());
@@ -201,7 +210,7 @@ function App() {
 
 ```typescript
 import { useEffect } from 'react';
-import { onConsentChanged } from '@datagrail/react-native-consent';
+import { onConsentChanged } from '@datagrail.io/react-native-consent';
 
 useEffect(() => {
   const unsubscribe = onConsentChanged((preferences) => {
@@ -216,7 +225,7 @@ useEffect(() => {
 If you were using ATT with the native SDK:
 
 ```typescript
-import { requestTrackingAuthorization } from '@datagrail/react-native-consent';
+import { requestTrackingAuthorization } from '@datagrail.io/react-native-consent';
 
 // The RN SDK automatically maps ATT status to consent preferences
 const status = await requestTrackingAuthorization();
