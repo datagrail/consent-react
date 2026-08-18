@@ -1,7 +1,7 @@
 # @datagrail.io/react-native-consent
 
 [![npm version](https://img.shields.io/npm/v/@datagrail.io/react-native-consent.svg)](https://www.npmjs.com/package/@datagrail.io/react-native-consent)
-[![CI](https://github.com/datagrail/react-native-consent/actions/workflows/ci.yml/badge.svg)](https://github.com/datagrail/react-native-consent/actions/workflows/ci.yml)
+[![CI](https://github.com/datagrail/consent-react/actions/workflows/ci.yml/badge.svg)](https://github.com/datagrail/consent-react/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
 Privacy consent management SDK for React Native 0.76+ (New Architecture). Config-driven consent banners, synchronous preference reads via MMKV, offline resilience, ATT integration, and WebView consent injection — all from a single cross-platform package.
