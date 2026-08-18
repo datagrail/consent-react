@@ -1,0 +1,19 @@
+name: PR Title
+
+# The squashed commit message is the PR title, and semantic-release derives the
+# next version from Conventional Commit types. Enforce the format on the title so
+# a merge to main can never silently no-op the release.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
