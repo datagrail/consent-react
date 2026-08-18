@@ -32,8 +32,9 @@
     "test:coverage": "jest --coverage",
     "test:integration": "jest --config jest.integration.config.js",
     "build:plugin": "tsc -p expo-plugin/tsconfig.json",
-    "prepare": "npm run build && npm run build:plugin",
-    "prepack": "npm run build && npm run build:plugin"
+    "build:all": "npm run build && npm run build:plugin",
+    "prepare": "npm run build:all",
+    "prepack": "npm run build:all"
   },
   "keywords": [
     "react-native",
