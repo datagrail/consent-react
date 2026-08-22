@@ -1,7 +1,7 @@
 import type { ConsentConfig } from '../types';
 import { ConsentError } from '../types';
 import type { NetworkService } from '../network/NetworkService';
-import { generateUuidV4 } from '../storage/uuid';
+import { generateNonceHex } from '../storage/uuid';
 import { computeUserHash } from './userHash';
 import type {
   SignatureProvider,
@@ -139,10 +139,15 @@ export class UniversalConsentService {
   /**
    * Write a user's Universal Consent preferences for cross-device retrieval.
    *
-   * `POST /universal_consent`. The SDK does NOT compute the HMAC — it invokes the customer's
-   * `getSignature` provider (which calls the customer's own backend) and attaches the result as
-   * `X-DG-Signature` / `X-DG-Timestamp` (unix seconds) / `X-DG-Key-Id` headers, plus a
-   * per-write `X-DG-Nonce` for replay protection. The shared secret never touches the device.
+   * `POST /universal_consent`. The SDK mints the `timestamp` (unix seconds) and a fresh per-write
+   * `nonce` (32 lowercase hex), assembles the canonical `"{customerId}:{userHash}:{timestamp}:{nonce}"`
+   * string-to-sign, and hands it to the customer's `getSignature` provider (which calls the
+   * customer's own backend). The SDK does NOT compute the HMAC — the shared secret never touches
+   * the device. It attaches `X-DG-Signature` / `X-DG-Key-Id` from the callback and the SDK-owned
+   * `X-DG-Timestamp` / `X-DG-Nonce`, alongside `X-DG-Api-Key`.
+   *
+   * With no `getSignature` provided, the SDK falls back to a limited, API-key-only write: just
+   * `X-DG-Api-Key`, no signature/timestamp/nonce headers.
    *
    * @param ccpaOptout the user's CCPA/US do-not-sell choice, only written when the
    *   `universalConsent.syncOptout` flag is enabled. NOT derived from the device's ad-tracking
@@ -155,13 +160,34 @@ export class UniversalConsentService {
     preferences: UniversalConsentPreferences,
     apiKey: string,
     ccpaOptout: boolean,
-    getSignature: SignatureProvider,
+    getSignature?: SignatureProvider,
   ): Promise<void> {
     const projectId = UniversalConsentService.requireProjectId(config);
     const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
 
-    // Ask the customer's backend to sign. The secret never leaves their backend.
-    const sig = await getSignature(config.dgCustomerId, userHash);
+    const headers: Record<string, string> = { 'X-DG-Api-Key': apiKey };
+
+    if (getSignature) {
+      // The SDK owns the timestamp and nonce and builds the string-to-sign; the customer's
+      // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
+      const timestamp = Math.floor(Date.now() / 1000);
+      const nonce = generateNonceHex();
+      const stringToSign = `${config.dgCustomerId}:${userHash}:${timestamp}:${nonce}`;
+
+      // Ask the customer's backend to sign. The secret never leaves their backend.
+      const sig = await getSignature({
+        stringToSign,
+        customerId: config.dgCustomerId,
+        userHash,
+        timestamp,
+        nonce,
+      });
+
+      headers['X-DG-Signature'] = sig.signature;
+      headers['X-DG-Timestamp'] = String(timestamp);
+      headers['X-DG-Nonce'] = nonce;
+      headers['X-DG-Key-Id'] = sig.keyId;
+    }
 
     const body = JSON.stringify({
       customer_id: config.dgCustomerId,
@@ -182,13 +208,7 @@ export class UniversalConsentService {
       url: UniversalConsentService.baseUrl(config),
       method: 'POST',
       body,
-      headers: {
-        'X-DG-Api-Key': apiKey,
-        'X-DG-Signature': sig.signature,
-        'X-DG-Timestamp': String(sig.timestamp),
-        'X-DG-Key-Id': sig.keyId,
-        'X-DG-Nonce': generateUuidV4(),
-      },
+      headers,
     });
 
     if (response.status < 200 || response.status >= 300) {

@@ -43,7 +43,7 @@ const universalConfigJson = fs.readFileSync(
 );
 
 const API_KEY = 'api-key-123';
-const SIGNATURE = { signature: 'deadbeef', keyId: 'key-1', timestamp: 1_700_000_000 };
+const SIGNATURE = { signature: 'deadbeef', keyId: 'key-1' };
 const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
 
 /** A `{ gtmKey: isEnabled }` view of the persisted preferences, for concise assertions. */

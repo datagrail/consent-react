@@ -142,15 +142,21 @@ interface WebViewConsentPayload {
 
 // --- Universal Consent ---
 
+interface UniversalConsentSignaturePayload {
+  stringToSign: string; // "{customerId}:{userHash}:{timestamp}:{nonce}" — HMAC exactly this
+  customerId: string;
+  userHash: string;
+  timestamp: number; // unix seconds, minted by the SDK
+  nonce: string; // 32 lowercase hex, minted by the SDK
+}
+
 interface UniversalConsentSignature {
-  signature: string; // lowercase-hex HMAC-SHA256 over "{customerId}:{userHash}:{timestamp}:{nonce}", keyed by the secret decoded to raw bytes
+  signature: string; // lowercase-hex HMAC-SHA256 over payload.stringToSign, keyed by the secret decoded to raw bytes
   keyId: string; // identifies which secret was used (supports rotation)
-  timestamp: number; // unix seconds that were signed over
 }
 
 type SignatureProvider = (
-  customerId: string,
-  userHash: string,
+  payload: UniversalConsentSignaturePayload,
 ) => Promise<UniversalConsentSignature>;
 
 // Note the shape difference: Universal Consent uses a MAP of category keys,
@@ -295,32 +301,36 @@ Enable it on your DataGrail config, then wire it up once you know who the user i
 
 ### 1. Provide a signature endpoint
 
-Writes are HMAC-signed. The SDK **never** holds your shared secret — it asks your backend to sign, and your backend returns the signature. Add an authenticated endpoint that computes, as lowercase hex:
+Writes are HMAC-signed. The SDK **never** holds your shared secret — it asks your backend to sign, and your backend returns the signature. The SDK mints the timestamp and nonce, assembles the canonical string, and hands your `getSignature` callback a `payload`. Your callback (via your backend) computes, as lowercase hex:
 
 ```
-HMAC-SHA256(rawSecretBytes, "{customerId}:{userHash}:{timestamp}:{nonce}")
+HMAC-SHA256(rawSecretBytes, payload.stringToSign)
 ```
 
-Two details are easy to get wrong, and both fail silently as rejected writes:
+where `payload.stringToSign` is exactly `"{customerId}:{userHash}:{timestamp}:{nonce}"`. Two details are easy to get wrong, and both fail silently as rejected writes:
 
 - **Decode the secret to raw bytes.** The shared secret is 64 hex characters. Decode it to the 32 raw bytes it represents and use _those bytes_ as the HMAC key — do **not** use the hex string itself as the key.
-- **Bind the nonce.** Each write carries a fresh per-write 128-bit nonce (32 lowercase hex) in the `X-DG-Nonce` header. The **same** nonce must be part of the string you sign; the edge recomputes the HMAC over the header value and rejects the write if it does not match.
+- **Sign `payload.stringToSign` verbatim.** Do not rebuild the string from the individual fields — any formatting drift produces a signature the edge rejects. The SDK sends the same `timestamp` and `nonce` in the `X-DG-Timestamp` / `X-DG-Nonce` headers, and the edge recomputes the HMAC over those exact values.
 
 ```typescript
 import type { SignatureProvider } from '@datagrail/react-native-consent';
 
-const getSignature: SignatureProvider = async (customerId, userHash) => {
+const getSignature: SignatureProvider = async (payload) => {
   const response = await fetch('https://your-backend.example.com/dg-consent-signature', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-    body: JSON.stringify({ customerId, userHash }),
+    // Send the string your backend must HMAC. It signs and returns { signature, keyId };
+    // the SDK owns the timestamp and nonce, so your backend never mints them.
+    body: JSON.stringify({ stringToSign: payload.stringToSign, userHash: payload.userHash }),
   });
-  // Your backend returns { signature, keyId, timestamp }
+  // Your backend returns { signature, keyId }
   return response.json();
 };
 ```
 
 Sign only for the currently authenticated user. An endpoint that signs any `userHash` it is handed lets a caller write consent for someone else.
+
+`getSignature` is optional: omit it and `setUserIdentifier` performs a limited, API-key-only write (just `X-DG-Api-Key`, no signature headers).
 
 ### 2. Rehydrate before you show the banner
 

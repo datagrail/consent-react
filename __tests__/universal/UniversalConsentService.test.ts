@@ -33,8 +33,9 @@ function mockFetch(status: number, data: string) {
 const SIGNATURE: UniversalConsentSignature = {
   signature: 'deadbeef',
   keyId: 'key-1',
-  timestamp: 1_700_000_000,
 };
+
+const HEX_32 = /^[0-9a-f]{32}$/;
 
 describe('UniversalConsentService', () => {
   let config: ConsentConfig;
@@ -226,27 +227,32 @@ describe('UniversalConsentService', () => {
       });
     });
 
-    it('attaches the signature headers from the provider plus a nonce', async () => {
+    it('attaches the callback signature/keyId plus the SDK-owned timestamp and 32-hex nonce', async () => {
       const fetchMock = mockFetch(200, '');
+      const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
 
-      await service.save(
-        config,
-        'user@example.com',
-        prefs,
-        'api-key-123',
-        false,
-        async () => SIGNATURE,
-      );
+      const before = Math.floor(Date.now() / 1000);
+      await service.save(config, 'user@example.com', prefs, 'api-key-123', false, getSignature);
+      const after = Math.floor(Date.now() / 1000);
 
       const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
       expect(init.headers['X-DG-Api-Key']).toBe('api-key-123');
       expect(init.headers['X-DG-Signature']).toBe('deadbeef');
       expect(init.headers['X-DG-Key-Id']).toBe('key-1');
-      // Unix seconds, stringified — not milliseconds, and not a number.
-      expect(init.headers['X-DG-Timestamp']).toBe('1700000000');
-      expect(init.headers['X-DG-Nonce']).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      );
+      // The nonce is 32 lowercase hex from the CSPRNG — NOT a dashed UUID.
+      expect(init.headers['X-DG-Nonce']).toMatch(HEX_32);
+
+      // Timestamp is the SDK's own unix seconds (stringified), within the call window — not a
+      // value the callback chose.
+      const sentTs = Number(init.headers['X-DG-Timestamp']);
+      expect(init.headers['X-DG-Timestamp']).toBe(String(sentTs));
+      expect(sentTs).toBeGreaterThanOrEqual(before);
+      expect(sentTs).toBeLessThanOrEqual(after);
+
+      // The header nonce/timestamp are exactly what was folded into the signed string.
+      const payload = getSignature.mock.calls[0][0];
+      expect(init.headers['X-DG-Nonce']).toBe(payload.nonce);
+      expect(init.headers['X-DG-Timestamp']).toBe(String(payload.timestamp));
     });
 
     it('uses a fresh nonce per write so a replay cannot reuse one', async () => {
@@ -274,13 +280,35 @@ describe('UniversalConsentService', () => {
       expect(first['X-DG-Nonce']).not.toBe(second['X-DG-Nonce']);
     });
 
-    it('passes the customer id and computed hash to the signature provider', async () => {
+    it('hands the provider a payload whose stringToSign is exactly {cid}:{uh}:{ts}:{nonce}', async () => {
       mockFetch(200, '');
       const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
 
       await service.save(config, 'user@example.com', prefs, 'api-key-123', false, getSignature);
 
-      expect(getSignature).toHaveBeenCalledWith('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7', USER_HASH);
+      expect(getSignature).toHaveBeenCalledTimes(1);
+      const payload = getSignature.mock.calls[0][0];
+      expect(payload.customerId).toBe('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
+      expect(payload.userHash).toBe(USER_HASH);
+      expect(payload.nonce).toMatch(HEX_32);
+      expect(typeof payload.timestamp).toBe('number');
+      // The canonical string the edge will recompute — built by the SDK, not the callback.
+      expect(payload.stringToSign).toBe(
+        `ac46d8ad-a67a-431f-a5d5-9e3eb922dae7:${USER_HASH}:${payload.timestamp}:${payload.nonce}`,
+      );
+    });
+
+    it('performs an API-key-only write when no signature provider is given', async () => {
+      const fetchMock = mockFetch(200, '');
+
+      await service.save(config, 'user@example.com', prefs, 'api-key-123', false);
+
+      const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+      expect(init.headers['X-DG-Api-Key']).toBe('api-key-123');
+      expect(init.headers).not.toHaveProperty('X-DG-Signature');
+      expect(init.headers).not.toHaveProperty('X-DG-Timestamp');
+      expect(init.headers).not.toHaveProperty('X-DG-Key-Id');
+      expect(init.headers).not.toHaveProperty('X-DG-Nonce');
     });
 
     it('suppresses ccpa_optout when syncOptout is disabled', async () => {

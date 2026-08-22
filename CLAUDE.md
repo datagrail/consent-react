@@ -130,12 +130,16 @@ backend. Do not change any of these without changing all of them:
 - **`cookieOptions` is a MAP** `{ key: bool }` on the wire, both read and write — unlike the local
   `ConsentPreferences`, which is an array of `CategoryConsent`.
 - **Reads are unsigned.** Only writes carry `X-DG-Signature` / `X-DG-Timestamp` (unix seconds) /
-  `X-DG-Key-Id` / `X-DG-Nonce`. `X-DG-Api-Key` goes on every request. The SDK never computes the
-  HMAC — `getSignature` calls the customer's backend, and the shared secret never touches the device.
-  The canonical string-to-sign is `{customerId}:{userHash}:{timestamp}:{nonce}`, HMAC-SHA256 as
-  lowercase hex; the key is the 64-hex secret **decoded to raw bytes**, not the hex string. The
-  `X-DG-Nonce` value is a fresh per-write 128-bit nonce (32 lowercase hex) that must also be bound
-  into that signed string, or the edge rejects the write as a replay.
+  `X-DG-Key-Id` / `X-DG-Nonce`. `X-DG-Api-Key` goes on every request. **The SDK owns the timestamp
+  and nonce** and builds the canonical string-to-sign `{customerId}:{userHash}:{timestamp}:{nonce}`;
+  it never computes the HMAC. It hands `getSignature` a `payload`
+  `{ stringToSign, customerId, userHash, timestamp, nonce }` and gets back `{ signature, keyId }` —
+  the callback (via the customer backend) computes `HMAC-SHA256(rawSecretBytes, payload.stringToSign)`
+  as lowercase hex, keyed by the 64-hex secret **decoded to raw bytes**, not the hex string. The
+  shared secret never touches the device. The `nonce` is a fresh per-write 128-bit value as **32
+  lowercase hex** from a CSPRNG (`generateNonceHex`, NOT a UUID); the SDK-sent `X-DG-Nonce` /
+  `X-DG-Timestamp` are the exact values folded into `stringToSign`, or the edge rejects the write.
+  Omitting `getSignature` performs a limited, API-key-only write (no signature headers).
 - **A miss is `{"status":"not_found"}` at HTTP 200**, not a 404, and the global kill switch responds
   the same way. Anything but an explicit `"found"` is a miss. "No signal" is **not** "denied".
 - **A found record is authoritative in both directions** of disagreement with local state.

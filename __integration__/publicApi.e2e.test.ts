@@ -36,7 +36,11 @@ import {
   setUserIdentifier,
   ConsentError,
 } from '../src/index';
-import type { ConsentPreferences, UniversalConsentSignature } from '../src/index';
+import type {
+  ConsentPreferences,
+  UniversalConsentSignature,
+  UniversalConsentSignaturePayload,
+} from '../src/index';
 import { MMKV, __resetAllStores } from 'react-native-mmkv';
 import { STORAGE_KEYS } from '../src/storage/keys';
 import * as fs from 'fs';
@@ -186,7 +190,10 @@ describe('Public API — end to end', () => {
 
   describe('Universal Consent', () => {
     const API_KEY = 'api-key-123';
-    const getSignature = jest.fn<Promise<UniversalConsentSignature>, [string, string]>();
+    const getSignature = jest.fn<
+      Promise<UniversalConsentSignature>,
+      [UniversalConsentSignaturePayload]
+    >();
 
     /**
      * Serve the config to the first fetch (`initialize`'s) and a caller-supplied sequence
@@ -211,7 +218,6 @@ describe('Public API — end to end', () => {
       getSignature.mockResolvedValue({
         signature: 'deadbeef',
         keyId: 'key-1',
-        timestamp: 1_700_000_000,
       });
     });
 
@@ -316,11 +322,20 @@ describe('Public API — end to end', () => {
       expect(writeInit.method).toBe('POST');
       expect(writeInit.headers['X-DG-Signature']).toBe('deadbeef');
       expect(writeInit.headers['X-DG-Key-Id']).toBe('key-1');
-      expect(writeInit.headers['X-DG-Timestamp']).toBe('1700000000');
-      expect(writeInit.headers['X-DG-Nonce']).toMatch(UUID_V4_RE);
+      // Nonce is 32 lowercase hex from the CSPRNG, not a dashed UUID; timestamp is SDK-minted.
+      expect(writeInit.headers['X-DG-Nonce']).toMatch(/^[0-9a-f]{32}$/);
+      expect(writeInit.headers['X-DG-Timestamp']).toMatch(/^\d+$/);
 
-      // The SDK asks the customer's backend to sign; the shared secret never reaches the device.
-      expect(getSignature).toHaveBeenCalledWith('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7', USER_HASH);
+      // The SDK asks the customer's backend to sign the string it built; the shared secret never
+      // reaches the device. The header nonce/timestamp are exactly what was folded into the string.
+      const payload = getSignature.mock.calls[0][0];
+      expect(payload.customerId).toBe('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
+      expect(payload.userHash).toBe(USER_HASH);
+      expect(payload.stringToSign).toBe(
+        `ac46d8ad-a67a-431f-a5d5-9e3eb922dae7:${USER_HASH}:${payload.timestamp}:${payload.nonce}`,
+      );
+      expect(writeInit.headers['X-DG-Nonce']).toBe(payload.nonce);
+      expect(writeInit.headers['X-DG-Timestamp']).toBe(String(payload.timestamp));
 
       const body = JSON.parse(writeInit.body);
       expect(body.user_hash).toBe(USER_HASH);

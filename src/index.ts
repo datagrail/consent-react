@@ -34,6 +34,7 @@ export { ConsentError } from './types';
 export type {
   SignatureProvider,
   UniversalConsentSignature,
+  UniversalConsentSignaturePayload,
   UniversalConsentPreferences,
   UniversalConsentRecord,
 } from './universal/types';

@@ -364,15 +364,16 @@ async function rehydrateReturningRawPreferences(
  * session without the signal would read it back as a revocation they never made. Suppression is a
  * read-time view (see `fetchUniversalConsent`).
  *
- * The SDK computes the user hash and reconciles signals on-device, but does NOT compute the
- * HMAC. It invokes `getSignature` — which calls your own backend — to obtain
- * `{ signature, keyId, timestamp }`. The shared secret never touches the device.
+ * The SDK computes the user hash and reconciles signals on-device, mints the timestamp and nonce,
+ * and builds the string-to-sign, but does NOT compute the HMAC. It invokes `getSignature` — which
+ * calls your own backend — with that payload and expects back `{ signature, keyId }`. The shared
+ * secret never touches the device. Omitting `getSignature` performs a limited, API-key-only write.
  */
 export async function setUserIdentifier(
   identifier: string,
   options: {
     apiKey: string;
-    getSignature: SignatureProvider;
+    getSignature?: SignatureProvider;
     trackingSignal?: ATTStatus;
   },
 ): Promise<void> {

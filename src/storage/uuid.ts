@@ -47,3 +47,22 @@ export function generateUuidV4(): string {
     BYTE_TO_HEX[bytes[15]!]!
   );
 }
+
+/**
+ * Generate a 128-bit nonce as 32 lowercase hex characters, drawn from the crypto
+ * RNG installed by the `react-native-get-random-values` import above.
+ *
+ * This is the `X-DG-Nonce` bound into a Universal Consent write signature. It is
+ * deliberately NOT a UUID: the string-to-sign the DataGrail edge recomputes is
+ * exactly these 32 hex characters, with no dashes and no version/variant bits.
+ */
+export function generateNonceHex(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += BYTE_TO_HEX[bytes[i]!]!;
+  }
+  return hex;
+}
