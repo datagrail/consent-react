@@ -132,6 +132,10 @@ backend. Do not change any of these without changing all of them:
 - **Reads are unsigned.** Only writes carry `X-DG-Signature` / `X-DG-Timestamp` (unix seconds) /
   `X-DG-Key-Id` / `X-DG-Nonce`. `X-DG-Api-Key` goes on every request. The SDK never computes the
   HMAC — `getSignature` calls the customer's backend, and the shared secret never touches the device.
+  The canonical string-to-sign is `{customerId}:{userHash}:{timestamp}:{nonce}`, HMAC-SHA256 as
+  lowercase hex; the key is the 64-hex secret **decoded to raw bytes**, not the hex string. The
+  `X-DG-Nonce` value is a fresh per-write 128-bit nonce (32 lowercase hex) that must also be bound
+  into that signed string, or the edge rejects the write as a replay.
 - **A miss is `{"status":"not_found"}` at HTTP 200**, not a 404, and the global kill switch responds
   the same way. Anything but an explicit `"found"` is a miss. "No signal" is **not** "denied".
 - **A found record is authoritative in both directions** of disagreement with local state.

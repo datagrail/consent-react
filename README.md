@@ -143,7 +143,7 @@ interface WebViewConsentPayload {
 // --- Universal Consent ---
 
 interface UniversalConsentSignature {
-  signature: string; // hex HMAC-SHA256, computed by your backend
+  signature: string; // lowercase-hex HMAC-SHA256 over "{customerId}:{userHash}:{timestamp}:{nonce}", keyed by the secret decoded to raw bytes
   keyId: string; // identifies which secret was used (supports rotation)
   timestamp: number; // unix seconds that were signed over
 }
@@ -295,7 +295,16 @@ Enable it on your DataGrail config, then wire it up once you know who the user i
 
 ### 1. Provide a signature endpoint
 
-Writes are HMAC-signed. The SDK **never** holds your shared secret — it asks your backend to sign, and your backend returns the signature. Add an authenticated endpoint that computes `HMAC-SHA256(secret, "{customerId}:{userHash}:{timestamp}")`:
+Writes are HMAC-signed. The SDK **never** holds your shared secret — it asks your backend to sign, and your backend returns the signature. Add an authenticated endpoint that computes, as lowercase hex:
+
+```
+HMAC-SHA256(rawSecretBytes, "{customerId}:{userHash}:{timestamp}:{nonce}")
+```
+
+Two details are easy to get wrong, and both fail silently as rejected writes:
+
+- **Decode the secret to raw bytes.** The shared secret is 64 hex characters. Decode it to the 32 raw bytes it represents and use _those bytes_ as the HMAC key — do **not** use the hex string itself as the key.
+- **Bind the nonce.** Each write carries a fresh per-write 128-bit nonce (32 lowercase hex) in the `X-DG-Nonce` header. The **same** nonce must be part of the string you sign; the edge recomputes the HMAC over the header value and rejects the write if it does not match.
 
 ```typescript
 import type { SignatureProvider } from '@datagrail/react-native-consent';

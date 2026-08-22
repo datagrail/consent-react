@@ -3,10 +3,12 @@
  *
  * The DataGrail SDK never computes the HMAC itself — the shared secret lives only on the
  * customer's backend and at the DataGrail edge. The customer's backend computes
- * `HMAC-SHA256(secret, "{customerId}:{userHash}:{timestamp}")` and returns the resulting
- * signature together with the key id (identifies which secret was used, for rotation) and the
- * timestamp (unix seconds) that was signed over. The SDK attaches these as request headers on
- * the Universal Consent write.
+ * `HMAC-SHA256(rawSecretBytes, "{customerId}:{userHash}:{timestamp}:{nonce}")` as lowercase hex,
+ * where `rawSecretBytes` is the 64-hex shared secret decoded to its raw bytes (those bytes are the
+ * HMAC key — the hex string itself is NOT the key), and `{nonce}` is the fresh per-write 128-bit
+ * value sent in the `X-DG-Nonce` header. It returns the resulting signature together with the key
+ * id (identifies which secret was used, for rotation) and the timestamp (unix seconds) that was
+ * signed over. The SDK attaches these as request headers on the Universal Consent write.
  */
 export interface UniversalConsentSignature {
   /** Hex-encoded HMAC-SHA256 signature computed by the customer backend. */
