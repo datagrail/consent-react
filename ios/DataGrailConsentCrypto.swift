@@ -21,18 +21,24 @@ class DataGrailConsentCrypto: NSObject {
     return false
   }
 
-  /// Compute `SHA-256("{customerId}:{projectId}:{normalizedIdentifier}")` as lowercase hex.
+  /// Thrown when the identifier is empty after normalization.
+  enum CryptoError: Error, Equatable {
+    case emptyIdentifier
+  }
+
+  /// Pure `SHA-256("{customerId}:{projectId}:{normalizedIdentifier}")` as lowercase hex.
   ///
   /// Normalization is Unicode NFC → trim → lowercase, in that order. This is the canonical
-  /// contract (TRUST-1843) shared by every SDK — do not deviate.
-  @objc
-  func computeUserHash(
-    _ customerId: String,
+  /// contract (TRUST-1843) shared by every SDK — do not deviate. Extracted from the bridge method
+  /// so the cross-SDK golden vector can be asserted by an XCTest with no React context — the one
+  /// invariant whose violation is silent (it splits a user across two consent records).
+  ///
+  /// - Throws: `CryptoError.emptyIdentifier` when the identifier is empty after normalization.
+  static func computeUserHash(
+    customerId: String,
     projectId: String,
-    identifier: String,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
+    identifier: String
+  ) throws -> String {
     // `precomposedStringWithCanonicalMapping` is NFC. Lowercasing is pinned to the POSIX locale
     // so a Turkish-locale device does not map "I" to the dotless "ı" and hash the same
     // identifier differently than every other device.
@@ -46,16 +52,36 @@ class DataGrailConsentCrypto: NSObject {
     // caller in the tenant shares, collapsing unrelated users onto one consent record. Checking
     // the raw string is not enough — "   " trims away to nothing.
     if normalized.isEmpty {
+      throw CryptoError.emptyIdentifier
+    }
+
+    let input = "\(customerId):\(projectId):\(normalized)"
+    let digest = SHA256.hash(data: Data(input.utf8))
+    return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  @objc
+  func computeUserHash(
+    _ customerId: String,
+    projectId: String,
+    identifier: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    do {
+      resolve(
+        try DataGrailConsentCrypto.computeUserHash(
+          customerId: customerId,
+          projectId: projectId,
+          identifier: identifier
+        )
+      )
+    } catch {
       reject(
         "INVALID_IDENTIFIER",
         "identifier must not be empty after normalization",
         nil
       )
-      return
     }
-
-    let input = "\(customerId):\(projectId):\(normalized)"
-    let digest = SHA256.hash(data: Data(input.utf8))
-    resolve(digest.map { String(format: "%02x", $0) }.joined())
   }
 }

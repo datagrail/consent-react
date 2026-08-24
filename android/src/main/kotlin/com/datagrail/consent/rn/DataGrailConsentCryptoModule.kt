@@ -40,28 +40,47 @@ class DataGrailConsentCryptoModule(
         identifier: String,
         promise: Promise
     ) {
-        // Lowercasing is pinned to Locale.ROOT: the default-locale overload maps "I" to the
-        // dotless "ı" on a Turkish device, so the same identifier would hash differently
-        // depending on the user's phone settings.
-        val normalized = Normalizer.normalize(identifier, Normalizer.Form.NFC)
-            .trim()
-            .lowercase(Locale.ROOT)
-
-        // Reject an identifier that is empty AFTER normalizing. SHA-256 over a bare
-        // "{customerId}:{projectId}:" prefix is a valid-looking hash that every
-        // empty-or-whitespace caller in the tenant shares, collapsing unrelated users onto one
-        // consent record. Checking the raw string is not enough — "   " trims away to nothing.
-        if (normalized.isEmpty()) {
-            promise.reject(
-                "INVALID_IDENTIFIER",
-                "identifier must not be empty after normalization"
-            )
-            return
+        try {
+            promise.resolve(Companion.computeUserHash(customerId, projectId, identifier))
+        } catch (e: InvalidIdentifierException) {
+            promise.reject("INVALID_IDENTIFIER", e.message)
         }
+    }
 
-        val input = "$customerId:$projectId:$normalized"
-        val hashBytes = MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray(Charsets.UTF_8))
-        promise.resolve(hashBytes.joinToString("") { "%02x".format(it) })
+    /** Thrown when the identifier is empty after normalization. */
+    class InvalidIdentifierException(message: String) : IllegalArgumentException(message)
+
+    companion object {
+        /**
+         * Pure `SHA-256("{customerId}:{projectId}:{normalizedIdentifier}")` as lowercase hex.
+         *
+         * Extracted from the bridge method so the cross-SDK golden vector can be asserted by a
+         * plain JUnit test with no React context — the one invariant whose violation is silent
+         * (it splits a user across two consent records). Behavior must not drift from the bridge.
+         *
+         * @throws InvalidIdentifierException when the identifier is empty after normalization.
+         */
+        @JvmStatic
+        fun computeUserHash(customerId: String, projectId: String, identifier: String): String {
+            // Lowercasing is pinned to Locale.ROOT: the default-locale overload maps "I" to the
+            // dotless "ı" on a Turkish device, so the same identifier would hash differently
+            // depending on the user's phone settings.
+            val normalized = Normalizer.normalize(identifier, Normalizer.Form.NFC)
+                .trim()
+                .lowercase(Locale.ROOT)
+
+            // Reject an identifier that is empty AFTER normalizing. SHA-256 over a bare
+            // "{customerId}:{projectId}:" prefix is a valid-looking hash that every
+            // empty-or-whitespace caller in the tenant shares, collapsing unrelated users onto
+            // one consent record. Checking the raw string is not enough — "   " trims to nothing.
+            if (normalized.isEmpty()) {
+                throw InvalidIdentifierException("identifier must not be empty after normalization")
+            }
+
+            val input = "$customerId:$projectId:$normalized"
+            val hashBytes = MessageDigest.getInstance("SHA-256")
+                .digest(input.toByteArray(Charsets.UTF_8))
+            return hashBytes.joinToString("") { "%02x".format(it) }
+        }
     }
 }
