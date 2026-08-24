@@ -367,6 +367,12 @@ async function rehydrateReturningRawPreferences(
  * session without the signal would read it back as a revocation they never made. Suppression is a
  * read-time view (see `fetchUniversalConsent`).
  *
+ * Not safe to call concurrently for the same identifier. This is a read-then-write against a
+ * shared remote record with no in-flight guard, so two overlapping calls can interleave — the one
+ * that reads first but writes second overwrites the other's more current preferences. Callers must
+ * serialize their own calls (most integrations call this once per login; guard against
+ * double-firing effects or retry-after-stall races).
+ *
  * The SDK computes the user hash and reconciles signals on-device, mints the timestamp and nonce,
  * and builds the string-to-sign, but does NOT compute the HMAC. It invokes `getSignature` — which
  * calls your own backend — with that payload and expects back `{ signature, keyId }`. The shared
