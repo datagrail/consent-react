@@ -21,7 +21,11 @@ export function generateUuidV4(): string {
   crypto.getRandomValues(bytes);
 
   // Per RFC 4122 §4.4: set the version (4) and variant (10xx) bits.
+  // Bitwise mask/or set the RFC version bits in place — required, not optional.
+  // eslint-disable-next-line no-bitwise
   bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  // Bitwise mask/or set the RFC variant bits in place — required, not optional.
+  // eslint-disable-next-line no-bitwise
   bytes[8] = (bytes[8]! & 0x3f) | 0x80;
 
   return (

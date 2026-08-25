@@ -134,7 +134,11 @@ function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
+    // Classic 32-bit rolling string hash; the shift is load-bearing arithmetic.
+    // eslint-disable-next-line no-bitwise
     hash = (hash << 5) - hash + char;
+    // Mask coerces the accumulator back to a 32-bit signed integer.
+    // eslint-disable-next-line no-bitwise
     hash = hash & hash; // Convert to 32-bit integer
   }
   return hash.toString(36);

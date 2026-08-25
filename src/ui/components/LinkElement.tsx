@@ -24,7 +24,9 @@ export function LinkElement({ links, locale, theme }: LinkElementProps): React.R
             key={link.id}
             onPress={() => {
               if (url) {
-                void Linking.openURL(url);
+                // Fire-and-forget: a failed deep link must not throw into the
+                // press handler. Matches the repo's `.catch(() => {})` idiom.
+                Linking.openURL(url).catch(() => {});
               }
             }}
             accessibilityRole="link"
