@@ -15,7 +15,7 @@ export function LinkElement({ links, locale, theme }: LinkElementProps): React.R
   return (
     <View style={[styles.container, { marginBottom: theme.spacing.md }]}>
       {sortedLinks.map((link) => {
-        const translation = link.translations[locale] ?? link.translations['en'];
+        const translation = link.translations[locale] ?? link.translations.en;
         const text = translation?.text ?? '';
         const url = translation?.url ?? '';
 

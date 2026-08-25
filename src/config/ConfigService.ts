@@ -190,10 +190,18 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
     type: raw.type as ElementType,
   };
 
-  if (raw.style !== undefined) element.style = raw.style;
-  if (raw.button_action !== undefined) element.buttonAction = raw.button_action as ButtonAction;
-  if (raw.target_consent_layer !== undefined) element.targetConsentLayer = raw.target_consent_layer;
-  if (raw.categories !== undefined) element.categories = raw.categories;
+  if (raw.style !== undefined) {
+    element.style = raw.style;
+  }
+  if (raw.button_action !== undefined) {
+    element.buttonAction = raw.button_action as ButtonAction;
+  }
+  if (raw.target_consent_layer !== undefined) {
+    element.targetConsentLayer = raw.target_consent_layer;
+  }
+  if (raw.categories !== undefined) {
+    element.categories = raw.categories;
+  }
 
   if (raw.links !== undefined) {
     element.links = raw.links.map(
@@ -240,7 +248,9 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
     );
   }
 
-  if (raw.show_icon !== undefined) element.showIcon = raw.show_icon;
+  if (raw.show_icon !== undefined) {
+    element.showIcon = raw.show_icon;
+  }
   if (raw.consent_layer_browser_signal_notice_config_id !== undefined) {
     element.consentLayerBrowserSignalNoticeConfigId =
       raw.consent_layer_browser_signal_notice_config_id;
@@ -253,11 +263,18 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
     >;
   }
 
-  if (raw.show_tracking_services !== undefined)
+  if (raw.show_tracking_services !== undefined) {
     element.showTrackingServices = raw.show_tracking_services;
-  if (raw.show_cookies !== undefined) element.showCookies = raw.show_cookies;
-  if (raw.show_icons !== undefined) element.showIcons = raw.show_icons;
-  if (raw.group_by_vendor !== undefined) element.groupByVendor = raw.group_by_vendor;
+  }
+  if (raw.show_cookies !== undefined) {
+    element.showCookies = raw.show_cookies;
+  }
+  if (raw.show_icons !== undefined) {
+    element.showIcons = raw.show_icons;
+  }
+  if (raw.group_by_vendor !== undefined) {
+    element.groupByVendor = raw.group_by_vendor;
+  }
 
   if (raw.translations !== undefined) {
     element.translations = raw.translations as Record<
@@ -299,7 +316,9 @@ function parseCategoryTranslations(
 function parseTrackingDetailsLinkTranslations(
   raw: RawConsentLayerElement['tracking_details_link_translations'],
 ): Record<string, TrackingDetailsLinkTranslation> {
-  if (raw === undefined) return {};
+  if (raw === undefined) {
+    return {};
+  }
 
   // If it's already a dict keyed by locale
   if (!Array.isArray(raw)) {

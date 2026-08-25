@@ -103,7 +103,9 @@ export function showBanner(): void {
 export function isCategoryEnabled(category: string): boolean {
   assertInitialized();
   const prefs = storageService!.loadPreferences();
-  if (prefs === null) return false;
+  if (prefs === null) {
+    return false;
+  }
   const option = prefs.cookieOptions.find((opt) => opt.gtmKey === category);
   return option?.isEnabled ?? false;
 }
@@ -116,7 +118,9 @@ export function getPreferences(): ConsentPreferences | null {
 export function getCategories(): ConsentPreferences | null {
   assertInitialized();
   const saved = storageService!.loadPreferences();
-  if (saved !== null) return saved;
+  if (saved !== null) {
+    return saved;
+  }
   return ConsentResolver.getDefaults(currentConfig!);
 }
 
@@ -245,10 +249,14 @@ export async function fetchUniversalConsent(
   assertUniversalConsentEnabled();
 
   const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
-  if (record === null) return null;
+  if (record === null) {
+    return null;
+  }
 
   const prefs = record.consentPreferences;
-  if (prefs === null) return record;
+  if (prefs === null) {
+    return record;
+  }
 
   const essentialKeys = new Set(ConsentResolver.getEssentialCategories(currentConfig!));
   const reconciled = reconcileSignals(
@@ -315,7 +323,9 @@ async function rehydrateReturningRawPreferences(
   // An empty map carries no category state to apply. Saving it would store preferences with
   // nothing in them, and because isCategoryEnabled() defaults an unknown key to false, that
   // reads back as a blanket opt-out the user never made — while also hiding the banner.
-  if (!rawCookieOptions || Object.keys(rawCookieOptions).length === 0) return null;
+  if (!rawCookieOptions || Object.keys(rawCookieOptions).length === 0) {
+    return null;
+  }
 
   // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
   // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
@@ -392,7 +402,9 @@ export async function setUserIdentifier(
     // Swallowed deliberately — see the read-then-write note above. A VALIDATION_ERROR is the
     // exception: an empty identifier or a missing consentProjectId would fail the write the same
     // way, so failing fast here beats a confusing error from the second call.
-    if (error instanceof ConsentError && error.code === 'VALIDATION_ERROR') throw error;
+    if (error instanceof ConsentError && error.code === 'VALIDATION_ERROR') {
+      throw error;
+    }
   }
 
   const current = getCategories();

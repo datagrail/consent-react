@@ -111,7 +111,9 @@ export function reconcileSignals(
   suppress: boolean,
   essentialKeys: Set<string>,
 ): Record<string, boolean> {
-  if (!suppress) return cookieOptions;
+  if (!suppress) {
+    return cookieOptions;
+  }
 
   const reconciled: Record<string, boolean> = {};
   for (const [key, enabled] of Object.entries(cookieOptions)) {

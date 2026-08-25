@@ -16,7 +16,9 @@ interface DataGrailConsentATTModule {
  */
 export function readTrackingSignal(): ATTStatus {
   const module = NativeModules.DataGrailConsentATT as DataGrailConsentATTModule | undefined;
-  if (!module) return 'notDetermined';
+  if (!module) {
+    return 'notDetermined';
+  }
   try {
     return module.getAdvertisingStatusSync();
   } catch {

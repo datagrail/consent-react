@@ -114,7 +114,9 @@ export class UniversalConsentService {
 
     // A miss is `{"status":"not_found"}` with HTTP 200, not a 404. The global kill switch
     // produces the same response, so anything that is not an explicit "found" is a miss.
-    if (raw.status !== 'found') return null;
+    if (raw.status !== 'found') {
+      return null;
+    }
 
     return {
       status: raw.status,

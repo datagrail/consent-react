@@ -26,7 +26,7 @@ export function CategoryElement({
   return (
     <View style={[styles.container, { marginBottom: theme.spacing.md }]}>
       {sortedCategories.map((category) => {
-        const translation = category.translations[locale] ?? category.translations['en'];
+        const translation = category.translations[locale] ?? category.translations.en;
         const name = translation?.name ?? category.gtmKey;
         const isEnabled = category.alwaysOn || (enabledCategories[category.gtmKey] ?? false);
         const essentialLabel = translation?.essentialLabel ?? 'Always On';

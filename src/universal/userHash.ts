@@ -48,7 +48,9 @@ export async function computeUserHash(
   try {
     return await getNativeModule().computeUserHash(customerId, projectId, identifier);
   } catch (error: unknown) {
-    if (error instanceof ConsentError) throw error;
+    if (error instanceof ConsentError) {
+      throw error;
+    }
     // The native side rejects with this code for an identifier that normalizes to "". Surfacing
     // it as VALIDATION_ERROR rather than a generic failure matters: it is a caller bug (an
     // unauthenticated or blank identifier reached the SDK), not a transient condition to retry.

@@ -22,7 +22,9 @@ export class StorageService {
 
   loadPreferences(): ConsentPreferences | null {
     const raw = this.storage.getString(STORAGE_KEYS.PREFERENCES);
-    if (raw === undefined) return null;
+    if (raw === undefined) {
+      return null;
+    }
     try {
       return JSON.parse(raw) as ConsentPreferences;
     } catch {
@@ -32,7 +34,9 @@ export class StorageService {
 
   getOrCreateUniqueId(): string {
     const existing = this.storage.getString(STORAGE_KEYS.UNIQUE_ID);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      return existing;
+    }
     const id = generateUuidV4();
     this.storage.set(STORAGE_KEYS.UNIQUE_ID, id);
     return id;
@@ -62,11 +66,15 @@ export class StorageService {
   loadConfigCache(): { config: ConsentConfig; timestamp: number } | null {
     const raw = this.storage.getString(STORAGE_KEYS.CONFIG_CACHE);
     const ts = this.storage.getString(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP);
-    if (raw === undefined || ts === undefined) return null;
+    if (raw === undefined || ts === undefined) {
+      return null;
+    }
     try {
       const config = JSON.parse(raw) as ConsentConfig;
       const timestamp = Number(ts);
-      if (isNaN(timestamp)) return null;
+      if (isNaN(timestamp)) {
+        return null;
+      }
       return { config, timestamp };
     } catch {
       return null;
@@ -79,7 +87,9 @@ export class StorageService {
 
   loadPendingEvents(): unknown[] {
     const raw = this.storage.getString(STORAGE_KEYS.PENDING_EVENTS);
-    if (raw === undefined) return [];
+    if (raw === undefined) {
+      return [];
+    }
     try {
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : [];
@@ -90,7 +100,9 @@ export class StorageService {
 
   getSchemaVersion(): number {
     const raw = this.storage.getString(STORAGE_KEYS.SCHEMA_VERSION);
-    if (raw === undefined) return 0;
+    if (raw === undefined) {
+      return 0;
+    }
     const version = Number(raw);
     return isNaN(version) ? 0 : version;
   }

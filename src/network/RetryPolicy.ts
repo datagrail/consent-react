@@ -26,9 +26,15 @@ export function isRetryableStatusCode(status: number): boolean {
 }
 
 export function isRetryableError(error: unknown): boolean {
-  if (error instanceof TypeError) return true; // network failure
-  if (error instanceof ConsentError && error.code === 'NETWORK_ERROR') return true;
-  if (error instanceof ConsentError && error.code === 'TIMEOUT') return true;
+  if (error instanceof TypeError) {
+    return true;
+  } // network failure
+  if (error instanceof ConsentError && error.code === 'NETWORK_ERROR') {
+    return true;
+  }
+  if (error instanceof ConsentError && error.code === 'TIMEOUT') {
+    return true;
+  }
   return false;
 }
 
