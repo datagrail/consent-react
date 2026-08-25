@@ -435,21 +435,38 @@ describe('ConsentManager — Universal Consent', () => {
   });
 
   describe('setUserIdentifier', () => {
-    it('reads before it writes', async () => {
-      const fetchMock = mockFetchSequence(universalConfigJson, found(), response(200, ''));
+    it('reads then writes the local choice through, in that order', async () => {
+      // config fetch + the save_preferences POST that records an explicit local choice.
+      mockFetchSequence(universalConfigJson, response(200, ''));
       await initUniversal();
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: false },
+        ],
+      });
+
+      // A found record exists and disagrees (marketing ON), but the write must still carry the
+      // user's LOCAL choice — read first, then write.
+      const uidFetch = jest
+        .fn()
+        .mockResolvedValueOnce(found())
+        .mockResolvedValueOnce(response(200, ''));
+      global.fetch = uidFetch;
 
       await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
 
-      const methods = fetchMock.mock.calls
-        .slice(1)
-        .map((call) => (call[1] as { method: string }).method);
+      const methods = uidFetch.mock.calls.map((call) => (call[1] as { method: string }).method);
       expect(methods).toEqual(['GET', 'POST']);
+      // Write-through: the POST carries the LOCAL choice (marketing OFF), not the fetched record.
+      const body = JSON.parse((uidFetch.mock.calls[1][1] as { body: string }).body);
+      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
     });
 
-    it('writes the rehydrated state rather than clobbering the record with local defaults', async () => {
-      // A fresh install with no local preferences must not overwrite the richer record the same
-      // person built up on another device.
+    it('adopts a found record without re-POSTing it when there is no local change', async () => {
+      // A fresh install with no explicit local choice: the found record is adopted into local
+      // state, and re-POSTing it would only echo state the edge already holds.
       const fetchMock = mockFetchSequence(
         universalConfigJson,
         found({
@@ -464,8 +481,14 @@ describe('ConsentManager — Universal Consent', () => {
 
       await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
 
-      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
-      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+      // The record was adopted into local state...
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(needsConsent()).toBe(false);
+      // ...but nothing was POSTed: only the config fetch and the universal read (both GET).
+      const posts = fetchMock.mock.calls.filter(
+        (call) => (call[1] as { method: string }).method === 'POST',
+      );
+      expect(posts).toHaveLength(0);
     });
 
     it('does not write when the read fails, to avoid clobbering a record it could not read', async () => {
@@ -548,22 +571,33 @@ describe('ConsentManager — Universal Consent', () => {
       expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
     });
 
-    it('writes the raw stored record, not the view the signal suppressed locally', async () => {
-      // The compounding case. Rehydration persists the SUPPRESSED state locally, so a write that
-      // sourced its payload from getCategories() afterwards would read that suppression back and
-      // store it as consent — erasing a web opt-in for every device on the identifier the first
-      // time the app opens with ATT denied.
-      const fetchMock = mockFetchSequence(
-        universalConfigJson,
-        found({
-          consent_preferences: {
-            isCustomised: true,
-            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': true },
-          },
-        }),
-        response(200, ''),
-      );
+    it('writes the raw local choice, not the fetched record or the signal-suppressed view', async () => {
+      // The compounding case. The user has an explicit local opt-in; rehydration then persists a
+      // SUPPRESSED view locally. The write must carry the RAW local choice — not the fetched
+      // record, and not the suppressed view that getCategories() would read back after rehydrate.
+      mockFetchSequence(universalConfigJson, response(200, ''));
       await initUniversal();
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: true },
+        ],
+      });
+
+      // The stored record disagrees (marketing OFF) and this device's signal is denied.
+      const uidFetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(response(200, ''));
+      global.fetch = uidFetch;
 
       await setUserIdentifier('user@example.com', {
         apiKey: API_KEY,
@@ -571,12 +605,37 @@ describe('ConsentManager — Universal Consent', () => {
         trackingSignal: 'denied',
       });
 
-      // The user's real opt-in survives onto the wire...
-      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
+      // The user's real opt-in survives onto the wire — not the record's OFF, not the suppression.
+      const body = JSON.parse((uidFetch.mock.calls[1][1] as { body: string }).body);
       expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
-      // ...while local reads still honor this device's signal.
+      // ...while local reads still honor the record and this device's signal.
       expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
       expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+    });
+
+    it('write-throughs the local choice on a hit rather than re-POSTing the fetched record', async () => {
+      // Local opt-out meets a found record that opted IN. The edge resolves cross-device
+      // conflicts; the SDK's job is to sync THIS device's current choice, not echo the record.
+      mockFetchSequence(universalConfigJson, response(200, ''));
+      await initUniversal();
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: false },
+        ],
+      });
+
+      const uidFetch = jest
+        .fn()
+        .mockResolvedValueOnce(found())
+        .mockResolvedValueOnce(response(200, ''));
+      global.fetch = uidFetch;
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      const body = JSON.parse((uidFetch.mock.calls[1][1] as { body: string }).body);
+      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
     });
 
     it('never derives ccpa_optout from the device tracking signal', async () => {

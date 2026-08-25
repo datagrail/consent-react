@@ -362,13 +362,16 @@ async function rehydrateReturningRawPreferences(
 /**
  * Register a user identifier and sync their consent across devices.
  *
- * READS then WRITES, matching the web, iOS, and Android SDKs. Rehydrating first means the write
- * persists the user's actual cross-device state rather than clobbering a richer server-side
- * record with whatever this fresh install happens to hold locally. A read MISS (no stored record)
- * still writes — the local state seeds the first cross-device record. A read FAILURE, by contrast,
- * rejects WITHOUT writing: the server never merges, so overwriting a record we could not read
- * would silently erase the user's real cross-device choice (the TRUST-2491 corruption class).
- * Callers should retry, which re-reads first.
+ * READS then WRITES. Rehydrating first applies any stored record to LOCAL state, so a choice the
+ * same person made on the web or another device is honored here. The write then carries the
+ * user's CURRENT LOCAL choice (sync-on-change) — it NEVER re-POSTs the record it just fetched,
+ * which the edge already holds and which would discard a choice made on this device. When a FOUND
+ * record meets no local change (a fresh install that only adopted it), the call adopts-WITHOUT-
+ * POST and returns without writing. A read MISS with local state still writes — it seeds the first
+ * cross-device record. A read FAILURE, by contrast, rejects WITHOUT writing: the server never
+ * merges, so overwriting a record we could not read would silently erase the user's real
+ * cross-device choice (the TRUST-2491 corruption class). Callers should retry, which re-reads
+ * first. Cross-device conflict resolution is the edge's job, not the SDK's.
  *
  * The read applies the tracking signal to LOCAL state; the write carries the user's RAW
  * preferences. The store holds raw choices and the server never merges, so a device signal must
@@ -401,6 +404,12 @@ export async function setUserIdentifier(
   const { apiKey, getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
 
+  // Capture the user's RAW local choice BEFORE the rehydrate below overwrites storage with the
+  // signal-reconciled view. Only an EXPLICIT choice counts as a local change — initialize()
+  // auto-persists config defaults, and hasUserConsented() is the flag that tells the two apart.
+  const hadLocalChoice = storageService!.hasUserConsented();
+  const localChoice = storageService!.loadPreferences();
+
   // Read first, then write. A genuine MISS comes back as `null` (no remote record exists — it is
   // safe to seed the record from local state below). A read FAILURE throws, and MUST propagate:
   // a rich remote record may exist that we simply could not read, and the server never merges — a
@@ -411,17 +420,29 @@ export async function setUserIdentifier(
   // TRUST-2491 fixed on the read-SUCCESS path; do not reopen it through the read-FAILURE branch.
   // Surfacing the error lets the caller retry, which re-reads first. (A VALIDATION_ERROR — empty
   // identifier or missing consentProjectId — propagates the same way and fails fast.)
-  const rawPreferences = await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal);
+  const rawFromRecord = await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal);
 
-  const current = getCategories();
+  // Adopt-without-POST: a FOUND record with no local change is already applied to local state by
+  // the rehydrate above. Re-POSTing it would only echo state the edge already holds — and worse,
+  // discard nothing the user chose here only because there was nothing to discard. The edge, not
+  // the SDK, resolves cross-device conflicts. (A miss still seeds the first record below.)
+  if (rawFromRecord !== null && !hadLocalChoice) {
+    return;
+  }
+
+  // Write-through the user's CURRENT LOCAL choice (sync-on-change) — NEVER `rawFromRecord`, which
+  // would discard a choice the user made on this device before associating their identity. The
+  // choice was captured BEFORE rehydrate, so it is RAW and no device signal leaks into the store.
+  // On a genuine miss with no explicit choice this still seeds the first record from local state.
+  const source = hadLocalChoice && localChoice !== null ? localChoice : getCategories();
   const rawMap: Record<string, boolean> = {};
-  for (const option of current?.cookieOptions ?? []) {
+  for (const option of source?.cookieOptions ?? []) {
     rawMap[option.gtmKey] = option.isEnabled;
   }
 
   const universalPrefs: UniversalConsentPreferences = {
-    isCustomised: current?.isCustomised ?? false,
-    cookieOptions: rawPreferences ?? rawMap,
+    isCustomised: source?.isCustomised ?? false,
+    cookieOptions: rawMap,
   };
 
   await universalConsentService!.save(
