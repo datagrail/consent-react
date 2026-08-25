@@ -8,7 +8,10 @@ import com.facebook.react.uimanager.ViewManager
 class DataGrailConsentPackage : ReactPackage {
 
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(DataGrailConsentATTModule(reactContext))
+        return listOf(
+            DataGrailConsentATTModule(reactContext),
+            DataGrailConsentCryptoModule(reactContext)
+        )
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {

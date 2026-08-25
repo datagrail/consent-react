@@ -35,7 +35,7 @@ repos:
         files: '\.(ts|tsx|js|jsx|json|md|yaml|yml)$'
         # test-config.json fixtures are raw backend-response snapshots; keep them
         # verbatim rather than reflowing their formatting.
-        exclude: '^(test-client/android/|.*\.lock$|package-lock\.json$|.*/test-config\.json$)'
+        exclude: '^(test-client/android/|.*\.lock$|package-lock\.json$|.*/test-config.*\.json$)'
 
       - id: eslint
         name: eslint (src)

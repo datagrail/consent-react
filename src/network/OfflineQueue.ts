@@ -104,14 +104,26 @@ export class OfflineQueue {
  * `network.request()` throw, and the catch in drain() would requeue it forever).
  */
 function isQueuedRequest(item: unknown): item is QueuedRequest {
-  if (typeof item !== 'object' || item === null) return false;
+  if (typeof item !== 'object' || item === null) {
+    return false;
+  }
   const candidate = item as Record<string, unknown>;
-  if (typeof candidate.id !== 'string') return false;
-  if (typeof candidate.queuedAt !== 'string') return false;
-  if (typeof candidate.endpoint !== 'string') return false;
-  if (typeof candidate.options !== 'object' || candidate.options === null) return false;
+  if (typeof candidate.id !== 'string') {
+    return false;
+  }
+  if (typeof candidate.queuedAt !== 'string') {
+    return false;
+  }
+  if (typeof candidate.endpoint !== 'string') {
+    return false;
+  }
+  if (typeof candidate.options !== 'object' || candidate.options === null) {
+    return false;
+  }
   const options = candidate.options as Record<string, unknown>;
-  if (typeof options.url !== 'string') return false;
+  if (typeof options.url !== 'string') {
+    return false;
+  }
   return true;
 }
 
@@ -122,7 +134,11 @@ function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    // Classic 32-bit rolling string hash; the shift is load-bearing arithmetic.
+    // eslint-disable-next-line no-bitwise
+    hash = (hash << 5) - hash + char;
+    // Mask coerces the accumulator back to a 32-bit signed integer.
+    // eslint-disable-next-line no-bitwise
     hash = hash & hash; // Convert to 32-bit integer
   }
   return hash.toString(36);

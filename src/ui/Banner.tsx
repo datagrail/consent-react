@@ -254,7 +254,7 @@ function ElementRenderer({
   onButtonAction,
   onCategoryToggle,
 }: ElementRendererProps): React.ReactElement | null {
-  const translation = element.translations?.[locale] ?? element.translations?.['en'];
+  const translation = element.translations?.[locale] ?? element.translations?.en;
   const text = translation?.value ?? '';
 
   switch (element.type) {

@@ -12,6 +12,7 @@ Privacy consent management SDK for React Native 0.76+ (New Architecture). Config
 - **Synchronous reads** — `isCategoryEnabled()` returns instantly via MMKV storage
 - **Offline resilience** — Failed network requests are queued and retried with exponential backoff
 - **ATT integration** — iOS App Tracking Transparency with automatic consent category mapping
+- **Universal Consent** — One consent choice follows the user across your web site and apps
 - **WebView support** — Inject consent state into WebViews for consistent cross-context privacy
 - **Expo compatible** — Config plugin auto-configures ATT usage description
 - **Dark mode** — Built-in theme system with light/dark mode support
@@ -85,6 +86,17 @@ const unsubscribe = onConsentChanged((preferences) => {
 | `retryPendingRequests` | —                                 | `Promise<{ success: number; failed: number }>` | Manually retry queued network requests.                      |
 | `trackBannerShown`     | —                                 | `Promise<void>`                                | Send analytics event that banner was displayed.              |
 
+### Universal Consent Methods
+
+Cross-device consent. Available when `universalConsent.enabled` is set on your DataGrail config; otherwise these throw a `ConsentError`.
+
+| Method                          | Parameters                                                               | Return Type                               | Description                                                              |
+| ------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------ |
+| `isUniversalConsentEnabled`     | —                                                                        | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
+| `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
+| `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
+| `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
+
 ### ATT Methods (iOS)
 
 | Method                         | Parameters | Return Type          | Description                                          |
@@ -126,6 +138,46 @@ interface WebViewConsentPayload {
   preferences: ConsentPreferences;
   configVersion: string;
   timestamp: string;
+}
+
+// --- Universal Consent ---
+
+interface UniversalConsentSignaturePayload {
+  stringToSign: string; // "{customerId}:{userHash}:{timestamp}:{nonce}" — HMAC exactly this
+  customerId: string;
+  userHash: string;
+  timestamp: number; // unix seconds, minted by the SDK
+  nonce: string; // 32 lowercase hex, minted by the SDK
+}
+
+interface UniversalConsentSignature {
+  signature: string; // lowercase-hex HMAC-SHA256 over payload.stringToSign, keyed by the secret decoded to raw bytes
+  keyId: string; // identifies which secret was used (supports rotation)
+}
+
+type SignatureProvider = (
+  payload: UniversalConsentSignaturePayload,
+) => Promise<UniversalConsentSignature>;
+
+// Note the shape difference: Universal Consent uses a MAP of category keys,
+// while the local ConsentPreferences above uses an array.
+interface UniversalConsentPreferences {
+  isCustomised: boolean;
+  cookieOptions: Record<string, boolean>;
+}
+
+interface UniversalConsentRecord {
+  status: string;
+  consentPreferences: UniversalConsentPreferences | null;
+  consentMode: string | null;
+  ccpaOptout: boolean;
+  platform: string | null;
+  policyName: string | null;
+  configVersion: string | null;
+  updatedAt: string | null;
+  gpc: boolean;
+  tcfString: string | null;
+  gppString: string | null;
 }
 ```
 
@@ -244,6 +296,100 @@ document.addEventListener('dgConsentReady', () => {
 });
 ```
 
+## Universal Consent
+
+Universal Consent lets one person's choice follow them across your web site and your mobile apps. Someone who opts out of marketing on your web site should not be re-prompted — or re-tracked — when they open the app.
+
+Enable it on your DataGrail config, then wire it up once you know who the user is.
+
+### 1. Provide a signature endpoint
+
+Writes are HMAC-signed. The SDK **never** holds your shared secret — it asks your backend to sign, and your backend returns the signature. The SDK mints the timestamp and nonce, assembles the canonical string, and hands your `getSignature` callback a `payload`. Your callback (via your backend) computes, as lowercase hex:
+
+```
+HMAC-SHA256(rawSecretBytes, payload.stringToSign)
+```
+
+where `payload.stringToSign` is exactly `"{customerId}:{userHash}:{timestamp}:{nonce}"`. Two details are easy to get wrong, and both fail silently as rejected writes:
+
+- **Decode the secret to raw bytes.** The shared secret is 64 hex characters. Decode it to the 32 raw bytes it represents and use _those bytes_ as the HMAC key — do **not** use the hex string itself as the key.
+- **Sign `payload.stringToSign` verbatim.** Do not rebuild the string from the individual fields — any formatting drift produces a signature the edge rejects. The SDK sends the same `timestamp` and `nonce` in the `X-DG-Timestamp` / `X-DG-Nonce` headers, and the edge recomputes the HMAC over those exact values.
+
+```typescript
+import type { SignatureProvider } from '@datagrail.io/react-native-consent';
+
+const getSignature: SignatureProvider = async (payload) => {
+  const response = await fetch('https://your-backend.example.com/dg-consent-signature', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+    // Send the string your backend must HMAC. It signs and returns { signature, keyId };
+    // the SDK owns the timestamp and nonce, so your backend never mints them.
+    body: JSON.stringify({ stringToSign: payload.stringToSign, userHash: payload.userHash }),
+  });
+  // Your backend returns { signature, keyId }
+  return response.json();
+};
+```
+
+Sign only for the currently authenticated user. An endpoint that signs any `userHash` it is handed lets a caller write consent for someone else.
+
+`getSignature` is optional: omit it and `setUserIdentifier` performs a limited, API-key-only write (just `X-DG-Api-Key`, no signature headers).
+
+### 2. Rehydrate before you show the banner
+
+Call this after `initialize()` and **before** `needsConsent()`:
+
+```typescript
+import {
+  initialize,
+  rehydrateFromUniversalConsent,
+  needsConsent,
+} from '@datagrail.io/react-native-consent';
+
+await initialize({ configUrl: 'https://your-config-url.com/config.json' });
+
+if (user.isLoggedIn) {
+  await rehydrateFromUniversalConsent(user.email, DG_API_KEY);
+}
+
+if (needsConsent()) {
+  // Only prompts users who have not answered anywhere yet
+}
+```
+
+A returned `false` means no record was stored for that user. Show the banner — **no record is not an opt-out**, it is the absence of any signal.
+
+### 3. Sync after the user answers
+
+When someone logs in or makes a choice, register their identifier. This reads their existing record first and then writes, so a fresh install cannot clobber a richer record the same person built up elsewhere:
+
+```typescript
+import { setUserIdentifier } from '@datagrail.io/react-native-consent';
+
+await setUserIdentifier(user.email, { apiKey: DG_API_KEY, getSignature });
+```
+
+To inspect a record without changing local state, use `fetchUniversalConsent` instead.
+
+### How signals are applied
+
+A stored record is authoritative in **both** directions — it overrides local state whether it is more or less permissive. On top of that, opt-out signals suppress non-essential categories locally:
+
+| Signal                                | Source                                              | Effect                              |
+| ------------------------------------- | --------------------------------------------------- | ----------------------------------- |
+| Stored GPC                            | Recorded on the web and carried on the record       | Suppresses non-essential categories |
+| Ad-tracking (`denied` / `restricted`) | This device (ATT on iOS, advertising ID on Android) | Suppresses non-essential categories |
+
+Suppression is one-directional: a signal can only turn categories **off**, never on. Permission to track is not consent to a marketing category, and the more privacy-protective signal always wins. Both are applied for you — you do not need to check them yourself.
+
+> **Note:** Pass `trackingSignal` explicitly if you already have the device status in hand; otherwise the SDK reads it.
+
+### Identifier requirements
+
+The identifier is normalized (Unicode NFC → trim → lowercase) and hashed with SHA-256 before it leaves the device — the raw value is never transmitted. Use the same identifier everywhere the person appears (typically their email), or their consent will not match across platforms. An identifier that is empty after normalization is rejected with a `VALIDATION_ERROR`.
+
+Hashing runs in a native module, so Universal Consent requires a development build. It does not work in Expo Go or on React Native Web.
+
 ## Expo Support
 
 The SDK includes an Expo config plugin that automatically configures the ATT usage description in your iOS Info.plist.
@@ -327,6 +473,26 @@ Check that:
 - The ATT dialog only shows once per app install. After the user responds, `requestTrackingAuthorization()` returns the cached status without showing a dialog.
 - Ensure `NSUserTrackingUsageDescription` is in your Info.plist.
 - ATT is only available on iOS 14+.
+
+### "DataGrailConsentCrypto native module not found"
+
+Universal Consent hashes the user identifier in a native module, so it needs a development build — it cannot run in Expo Go or on React Native Web. This surfaces as a `ConsentError` with code `NATIVE_ERROR`.
+
+- Run `cd ios && pod install` after installing or upgrading the package.
+- On Expo, run `npx expo prebuild` and use a development build rather than Expo Go.
+- Rebuild the app after installing. A JS-only reload will not pick up a new native module.
+
+### Universal Consent methods throw a ConsentError immediately
+
+- `universalConsent.enabled` must be set on your DataGrail config. Check `isUniversalConsentEnabled()`.
+- `consentProjectId` must also be present on the config, or reads and writes fail with `VALIDATION_ERROR`.
+- An identifier that is empty after normalization (including whitespace-only) is rejected.
+
+### Consent is not following a user across devices
+
+- Confirm the identifier is byte-identical everywhere — the SDK normalizes and hashes it, so `User@Example.com ` and `user@example.com` match, but a username on one platform and an email on another will not.
+- Confirm the same `consentProjectId` is configured on every platform. The project ID is part of the hash.
+- `rehydrateFromUniversalConsent` returning `false` means no record was stored, not that the read failed. Use `fetchUniversalConsent` to inspect what the server has.
 
 ### TypeScript type errors
 

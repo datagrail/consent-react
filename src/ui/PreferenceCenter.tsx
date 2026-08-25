@@ -29,7 +29,9 @@ export function PreferenceCenter({
   const resolvedLocale = locale ?? 'en';
 
   const categories = useMemo(() => {
-    if (!config) return [];
+    if (!config) {
+      return [];
+    }
     return findCategories(config);
   }, [config]);
 
@@ -38,7 +40,9 @@ export function PreferenceCenter({
 
   // Initialize toggle state from current preferences or initial categories
   useEffect(() => {
-    if (!config) return;
+    if (!config) {
+      return;
+    }
     const prefs = ConsentManager.getCategories();
     const initialState: Record<string, boolean> = {};
 
@@ -74,7 +78,9 @@ export function PreferenceCenter({
 
   const handleCancel = useCallback(() => {
     // Reset toggles to initial state
-    if (!config) return;
+    if (!config) {
+      return;
+    }
     const prefs = ConsentManager.getCategories();
     const resetState: Record<string, boolean> = {};
 
@@ -177,7 +183,7 @@ function CategoryRow({
   onToggle,
   onToggleExpand,
 }: CategoryRowProps): React.ReactElement {
-  const translation = category.translations[locale] ?? category.translations['en'];
+  const translation = category.translations[locale] ?? category.translations.en;
   const name = translation?.name ?? category.gtmKey;
   const description = translation?.description ?? '';
   const essentialLabel = translation?.essentialLabel ?? 'Always On';
@@ -398,14 +404,18 @@ function findCategories(config: ConsentConfig): ConsentLayerCategory[] {
 }
 
 function getHeaderText(config: ConsentConfig | null, locale: string): string {
-  if (!config) return 'Privacy Settings';
+  if (!config) {
+    return 'Privacy Settings';
+  }
 
   // Look for a title element in any layer
   for (const layer of Object.values(config.layout.consentLayers)) {
     for (const element of layer.elements) {
       if (element.type === 'ConsentLayerTextElement' && element.style === 'dg-title') {
-        const translation = element.translations?.[locale] ?? element.translations?.['en'];
-        if (translation?.value) return translation.value;
+        const translation = element.translations?.[locale] ?? element.translations?.en;
+        if (translation?.value) {
+          return translation.value;
+        }
       }
     }
   }
