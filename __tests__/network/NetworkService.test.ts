@@ -18,15 +18,20 @@ describe('NetworkService', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve('{"ok":true}'),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     const response = await network.request({ url: 'https://api.example.com/config' });
 
-    expect(global.fetch).toHaveBeenCalledWith('https://api.example.com/config', expect.objectContaining({
-      method: 'GET',
-      body: undefined,
-    }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/config',
+      expect.objectContaining({
+        method: 'GET',
+        body: undefined,
+      }),
+    );
     expect(response.status).toBe(200);
     expect(response.data).toBe('{"ok":true}');
     expect(response.headers['content-type']).toBe('application/json');
@@ -37,7 +42,9 @@ describe('NetworkService', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 201,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     const body = JSON.stringify({ consent_id: 'abc' });
@@ -47,10 +54,13 @@ describe('NetworkService', () => {
       body,
     });
 
-    expect(global.fetch).toHaveBeenCalledWith('https://api.example.com/save', expect.objectContaining({
-      method: 'POST',
-      body,
-    }));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/save',
+      expect.objectContaining({
+        method: 'POST',
+        body,
+      }),
+    );
   });
 
   it('should include custom headers', async () => {
@@ -58,7 +68,9 @@ describe('NetworkService', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await network.request({
@@ -102,16 +114,42 @@ describe('NetworkService', () => {
     jest.useRealTimers();
   });
 
+  it('should classify a timeout as TIMEOUT even when abort rejects with a non-Error (DOMException)', async () => {
+    jest.useFakeTimers();
+
+    // Some RN/Hermes runtimes reject an aborted fetch with a DOMException that
+    // is not `instanceof Error` — the name check alone would miss it.
+    const domExceptionLike = { name: 'AbortError', message: 'The operation was aborted' };
+
+    global.fetch = jest.fn().mockImplementation((_url, opts) => {
+      return new Promise((_resolve, reject) => {
+        (opts.signal as AbortSignal).addEventListener('abort', () => reject(domExceptionLike));
+      });
+    });
+
+    const promise = network.request({
+      url: 'https://api.example.com/slow',
+      timeoutMs: 50,
+    });
+
+    jest.advanceTimersByTime(50);
+
+    await expect(promise).rejects.toThrow(ConsentError);
+    await expect(promise).rejects.toMatchObject({ code: 'TIMEOUT' });
+
+    jest.useRealTimers();
+  });
+
   it('should throw ConsentError with NETWORK_ERROR code on fetch failure', async () => {
     global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
 
-    await expect(
-      network.request({ url: 'https://api.example.com/offline' })
-    ).rejects.toThrow(ConsentError);
+    await expect(network.request({ url: 'https://api.example.com/offline' })).rejects.toThrow(
+      ConsentError,
+    );
 
-    await expect(
-      network.request({ url: 'https://api.example.com/offline' })
-    ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+    await expect(network.request({ url: 'https://api.example.com/offline' })).rejects.toMatchObject(
+      { code: 'NETWORK_ERROR' },
+    );
   });
 
   it('should return non-2xx status without throwing', async () => {
@@ -119,7 +157,9 @@ describe('NetworkService', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 500,
       text: () => Promise.resolve('Server Error'),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     const response = await network.request({ url: 'https://api.example.com/error' });

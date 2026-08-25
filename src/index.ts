@@ -23,12 +23,21 @@ export type {
   Unsubscribe,
   ConsentErrorCode,
   ATTStatus,
+  UniversalConsentConfig,
   WebViewConsentPayload,
   BannerProps,
   PreferenceCenterProps,
 } from './types';
 
 export { ConsentError } from './types';
+
+export type {
+  SignatureProvider,
+  UniversalConsentSignature,
+  UniversalConsentSignaturePayload,
+  UniversalConsentPreferences,
+  UniversalConsentRecord,
+} from './universal/types';
 
 export {
   initialize,
@@ -46,6 +55,10 @@ export {
   hasUserConsent,
   retryPendingRequests,
   trackBannerShown,
+  isUniversalConsentEnabled,
+  fetchUniversalConsent,
+  rehydrateFromUniversalConsent,
+  setUserIdentifier,
 } from './ConsentManager';
 
 export { requestTrackingAuthorization, getTrackingStatus } from './platform/att';

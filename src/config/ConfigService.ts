@@ -47,7 +47,7 @@ export class ConfigService {
     const cached = this.storage.loadConfigCache();
 
     // Cache hit within TTL — return immediately
-    if (cached && (now - cached.timestamp) < this.cacheTtl) {
+    if (cached && now - cached.timestamp < this.cacheTtl) {
       return cached.config;
     }
 
@@ -62,8 +62,8 @@ export class ConfigService {
   }
 
   private async fetchAndCache(configUrl: string): Promise<ConsentConfig> {
-    const response = await retryWithBackoff(
-      () => this.network.request({
+    const response = await retryWithBackoff(() =>
+      this.network.request({
         url: configUrl,
         method: 'GET',
         timeoutMs: this.options.timeout ?? 30_000,
@@ -71,10 +71,7 @@ export class ConfigService {
     );
 
     if (response.status < 200 || response.status >= 300) {
-      throw new ConsentError(
-        'NETWORK_ERROR',
-        `Config fetch failed with status ${response.status}`,
-      );
+      throw new ConsentError('NETWORK_ERROR', `Config fetch failed with status ${response.status}`);
     }
 
     const config = ConfigService.parseConfig(response.data);
@@ -101,7 +98,7 @@ export class ConfigService {
       throw new ConsentError('PARSE_ERROR', 'Failed to parse config JSON');
     }
 
-    return {
+    const config: ConsentConfig = {
       version: parsed.version,
       consentContainerVersionId: parsed.consentContainerVersionId,
       dgCustomerId: parsed.dgCustomerId,
@@ -126,6 +123,21 @@ export class ConfigService {
       initialCategories: parseInitialCategories(parsed.initialCategories),
       layout: parseLayout(parsed.layout),
     };
+
+    // Only set when present. These are absent on configs published before Universal Consent
+    // existed, and assigning `undefined` explicitly would break exactOptionalPropertyTypes-style
+    // consumers while telling us nothing the omission doesn't.
+    if (parsed.consentProjectId) {
+      config.consentProjectId = parsed.consentProjectId;
+    }
+    if (parsed.universalConsent) {
+      config.universalConsent = {
+        enabled: parsed.universalConsent.enabled ?? false,
+        syncOptout: parsed.universalConsent.sync_optout ?? false,
+      };
+    }
+
+    return config;
   }
 }
 
@@ -178,17 +190,30 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
     type: raw.type as ElementType,
   };
 
-  if (raw.style !== undefined) element.style = raw.style;
-  if (raw.button_action !== undefined) element.buttonAction = raw.button_action as ButtonAction;
-  if (raw.target_consent_layer !== undefined) element.targetConsentLayer = raw.target_consent_layer;
-  if (raw.categories !== undefined) element.categories = raw.categories;
+  if (raw.style !== undefined) {
+    element.style = raw.style;
+  }
+  if (raw.button_action !== undefined) {
+    element.buttonAction = raw.button_action as ButtonAction;
+  }
+  if (raw.target_consent_layer !== undefined) {
+    element.targetConsentLayer = raw.target_consent_layer;
+  }
+  if (raw.categories !== undefined) {
+    element.categories = raw.categories;
+  }
 
   if (raw.links !== undefined) {
-    element.links = raw.links.map((link): LinkItem => ({
-      id: link.id,
-      order: link.order,
-      translations: link.translations as Record<string, { id?: string; locale?: string; text?: string; url?: string }>,
-    }));
+    element.links = raw.links.map(
+      (link): LinkItem => ({
+        id: link.id,
+        order: link.order,
+        translations: link.translations as Record<
+          string,
+          { id?: string; locale?: string; text?: string; url?: string }
+        >,
+      }),
+    );
   }
 
   if (raw.consent_layer_categories !== undefined) {
@@ -223,9 +248,12 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
     );
   }
 
-  if (raw.show_icon !== undefined) element.showIcon = raw.show_icon;
+  if (raw.show_icon !== undefined) {
+    element.showIcon = raw.show_icon;
+  }
   if (raw.consent_layer_browser_signal_notice_config_id !== undefined) {
-    element.consentLayerBrowserSignalNoticeConfigId = raw.consent_layer_browser_signal_notice_config_id;
+    element.consentLayerBrowserSignalNoticeConfigId =
+      raw.consent_layer_browser_signal_notice_config_id;
   }
 
   if (raw.browser_signal_notice_translations !== undefined) {
@@ -235,13 +263,24 @@ function parseConsentLayerElement(raw: RawConsentLayerElement): ConsentLayerElem
     >;
   }
 
-  if (raw.show_tracking_services !== undefined) element.showTrackingServices = raw.show_tracking_services;
-  if (raw.show_cookies !== undefined) element.showCookies = raw.show_cookies;
-  if (raw.show_icons !== undefined) element.showIcons = raw.show_icons;
-  if (raw.group_by_vendor !== undefined) element.groupByVendor = raw.group_by_vendor;
+  if (raw.show_tracking_services !== undefined) {
+    element.showTrackingServices = raw.show_tracking_services;
+  }
+  if (raw.show_cookies !== undefined) {
+    element.showCookies = raw.show_cookies;
+  }
+  if (raw.show_icons !== undefined) {
+    element.showIcons = raw.show_icons;
+  }
+  if (raw.group_by_vendor !== undefined) {
+    element.groupByVendor = raw.group_by_vendor;
+  }
 
   if (raw.translations !== undefined) {
-    element.translations = raw.translations as Record<string, { id?: string; locale?: string; value?: string; text?: string; url?: string }>;
+    element.translations = raw.translations as Record<
+      string,
+      { id?: string; locale?: string; value?: string; text?: string; url?: string }
+    >;
   }
 
   return element;
@@ -277,7 +316,9 @@ function parseCategoryTranslations(
 function parseTrackingDetailsLinkTranslations(
   raw: RawConsentLayerElement['tracking_details_link_translations'],
 ): Record<string, TrackingDetailsLinkTranslation> {
-  if (raw === undefined) return {};
+  if (raw === undefined) {
+    return {};
+  }
 
   // If it's already a dict keyed by locale
   if (!Array.isArray(raw)) {

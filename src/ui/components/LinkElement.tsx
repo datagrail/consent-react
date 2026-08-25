@@ -15,7 +15,7 @@ export function LinkElement({ links, locale, theme }: LinkElementProps): React.R
   return (
     <View style={[styles.container, { marginBottom: theme.spacing.md }]}>
       {sortedLinks.map((link) => {
-        const translation = link.translations[locale] ?? link.translations['en'];
+        const translation = link.translations[locale] ?? link.translations.en;
         const text = translation?.text ?? '';
         const url = translation?.url ?? '';
 
@@ -24,7 +24,9 @@ export function LinkElement({ links, locale, theme }: LinkElementProps): React.R
             key={link.id}
             onPress={() => {
               if (url) {
-                void Linking.openURL(url);
+                // Fire-and-forget: a failed deep link must not throw into the
+                // press handler. Matches the repo's `.catch(() => {})` idiom.
+                Linking.openURL(url).catch(() => {});
               }
             }}
             accessibilityRole="link"

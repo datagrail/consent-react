@@ -13,7 +13,7 @@ Thank you for your interest in contributing! This document covers how to set up 
 
 ```bash
 # Clone the repository
-git clone https://github.com/datagrail/react-native-consent.git
+git clone https://github.com/datagrail/consent-react.git
 cd react-native-consent
 
 # Install dependencies
