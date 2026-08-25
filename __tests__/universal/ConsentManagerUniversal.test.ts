@@ -468,8 +468,12 @@ describe('ConsentManager — Universal Consent', () => {
       expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
     });
 
-    it('still writes when the read fails', async () => {
-      // Someone who just answered the banner needs their choice saved even if the read broke.
+    it('does not write when the read fails, to avoid clobbering a record it could not read', async () => {
+      // A read FAILURE is not a read MISS. The server never merges, so a write is a full
+      // overwrite — sourcing it from local state (which may be a signal-suppressed view or bare
+      // config defaults) over a rich remote record we could not read would silently erase the
+      // user's real cross-device choice for every device on their identifier (TRUST-2491). The
+      // failure must surface so the caller can retry, which re-reads first.
       const fetchMock = mockFetchSequence(
         universalConfigJson,
         response(500, 'gateway error'),
@@ -479,9 +483,12 @@ describe('ConsentManager — Universal Consent', () => {
 
       await expect(
         setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature }),
-      ).resolves.toBeUndefined();
+      ).rejects.toBeDefined();
 
-      expect((fetchMock.mock.calls[2][1] as { method: string }).method).toBe('POST');
+      const posts = fetchMock.mock.calls.filter(
+        (call) => (call[1] as { method: string }).method === 'POST',
+      );
+      expect(posts).toHaveLength(0);
     });
 
     it('does not write when the identifier is empty after normalization', async () => {

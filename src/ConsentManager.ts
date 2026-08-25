@@ -364,8 +364,11 @@ async function rehydrateReturningRawPreferences(
  *
  * READS then WRITES, matching the web, iOS, and Android SDKs. Rehydrating first means the write
  * persists the user's actual cross-device state rather than clobbering a richer server-side
- * record with whatever this fresh install happens to hold locally. A read failure does not block
- * the write — someone who just answered the banner still needs their choice saved.
+ * record with whatever this fresh install happens to hold locally. A read MISS (no stored record)
+ * still writes — the local state seeds the first cross-device record. A read FAILURE, by contrast,
+ * rejects WITHOUT writing: the server never merges, so overwriting a record we could not read
+ * would silently erase the user's real cross-device choice (the TRUST-2491 corruption class).
+ * Callers should retry, which re-reads first.
  *
  * The read applies the tracking signal to LOCAL state; the write carries the user's RAW
  * preferences. The store holds raw choices and the server never merges, so a device signal must
@@ -373,6 +376,12 @@ async function rehydrateReturningRawPreferences(
  * a marketing opt-in the user made on the web, for every device on their identifier, and a later
  * session without the signal would read it back as a revocation they never made. Suppression is a
  * read-time view (see `fetchUniversalConsent`).
+ *
+ * Not safe to call concurrently for the same identifier. This is a read-then-write against a
+ * shared remote record with no in-flight guard, so two overlapping calls can interleave — the one
+ * that reads first but writes second overwrites the other's more current preferences. Callers must
+ * serialize their own calls (most integrations call this once per login; guard against
+ * double-firing effects or retry-after-stall races).
  *
  * The SDK computes the user hash and reconciles signals on-device, mints the timestamp and nonce,
  * and builds the string-to-sign, but does NOT compute the HMAC. It invokes `getSignature` — which
@@ -392,20 +401,17 @@ export async function setUserIdentifier(
   const { apiKey, getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
 
-  // The RAW preferences off the record, when one was found. Rehydration persists the reconciled
-  // view locally, so letting the write fall back to getCategories() would read that suppressed
-  // state back and store it as the user's choice.
-  let rawPreferences: Record<string, boolean> | null = null;
-  try {
-    rawPreferences = await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal);
-  } catch (error: unknown) {
-    // Swallowed deliberately — see the read-then-write note above. A VALIDATION_ERROR is the
-    // exception: an empty identifier or a missing consentProjectId would fail the write the same
-    // way, so failing fast here beats a confusing error from the second call.
-    if (error instanceof ConsentError && error.code === 'VALIDATION_ERROR') {
-      throw error;
-    }
-  }
+  // Read first, then write. A genuine MISS comes back as `null` (no remote record exists — it is
+  // safe to seed the record from local state below). A read FAILURE throws, and MUST propagate:
+  // a rich remote record may exist that we simply could not read, and the server never merges — a
+  // write is a full overwrite. Sourcing the payload from local state on a failure (a prior
+  // rehydrate persisted the signal-SUPPRESSED view, or nothing ran and we hold bare config
+  // defaults) would clobber that unread record for every device on the identifier, with no error
+  // surfaced since the write itself would succeed. That is the cross-device corruption class
+  // TRUST-2491 fixed on the read-SUCCESS path; do not reopen it through the read-FAILURE branch.
+  // Surfacing the error lets the caller retry, which re-reads first. (A VALIDATION_ERROR — empty
+  // identifier or missing consentProjectId — propagates the same way and fails fast.)
+  const rawPreferences = await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal);
 
   const current = getCategories();
   const rawMap: Record<string, boolean> = {};
