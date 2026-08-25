@@ -22,4 +22,5 @@ dependencies {
     implementation("com.facebook.react:react-android:+")
     implementation("com.google.android.gms:play-services-ads-identifier:18.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    testImplementation("junit:junit:4.13.2")
 }
