@@ -316,7 +316,7 @@ where `payload.stringToSign` is exactly `"{customerId}:{userHash}:{timestamp}:{n
 - **Sign `payload.stringToSign` verbatim.** Do not rebuild the string from the individual fields — any formatting drift produces a signature the edge rejects. The SDK sends the same `timestamp` and `nonce` in the `X-DG-Timestamp` / `X-DG-Nonce` headers, and the edge recomputes the HMAC over those exact values.
 
 ```typescript
-import type { SignatureProvider } from '@datagrail/react-native-consent';
+import type { SignatureProvider } from '@datagrail.io/react-native-consent';
 
 const getSignature: SignatureProvider = async (payload) => {
   const response = await fetch('https://your-backend.example.com/dg-consent-signature', {
@@ -344,7 +344,7 @@ import {
   initialize,
   rehydrateFromUniversalConsent,
   needsConsent,
-} from '@datagrail/react-native-consent';
+} from '@datagrail.io/react-native-consent';
 
 await initialize({ configUrl: 'https://your-config-url.com/config.json' });
 
@@ -364,7 +364,7 @@ A returned `false` means no record was stored for that user. Show the banner —
 When someone logs in or makes a choice, register their identifier. This reads their existing record first and then writes, so a fresh install cannot clobber a richer record the same person built up elsewhere:
 
 ```typescript
-import { setUserIdentifier } from '@datagrail/react-native-consent';
+import { setUserIdentifier } from '@datagrail.io/react-native-consent';
 
 await setUserIdentifier(user.email, { apiKey: DG_API_KEY, getSignature });
 ```
