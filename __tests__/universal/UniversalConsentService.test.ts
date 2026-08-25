@@ -390,6 +390,37 @@ describe('UniversalConsentService', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it('rejects with TIMEOUT and does not write when getSignature never resolves', async () => {
+      // A hung customer backend: the provider promise never settles. The write must give up at the
+      // SIGNATURE_TIMEOUT_MS ceiling (30s) rather than hanging. Fake timers let us hit the bound
+      // without really waiting 30 seconds.
+      jest.useFakeTimers();
+      try {
+        const fetchMock = mockFetch(200, '');
+        const getSignature = jest.fn(() => new Promise<UniversalConsentSignature>(() => {}));
+
+        const savePromise = service.save(
+          config,
+          'user@example.com',
+          prefs,
+          'api-key-123',
+          false,
+          getSignature,
+        );
+        // Assert on the rejection before advancing time so the rejection is never unhandled.
+        const rejection = expect(savePromise).rejects.toMatchObject({ code: 'TIMEOUT' });
+
+        // Fast-forward the full 30s ceiling; flushes the pre-signature microtasks too.
+        await jest.advanceTimersByTimeAsync(30_000);
+
+        await rejection;
+        // Timed out before the signature was ready, so nothing was POSTed.
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('does not request a signature when consentProjectId is missing', async () => {
       const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
       mockFetch(200, '');

@@ -12,6 +12,28 @@ import type {
 const PLATFORM = 'react-native';
 
 /**
+ * Upper bound on how long the SDK waits for the customer's `getSignature` provider before it gives
+ * up on a Universal Consent write. The provider calls the customer's own backend, which the SDK
+ * does not control, so an unresponsive or hung backend must not stall the write indefinitely.
+ * Mirrors {@link NetworkService}'s default request timeout and the cross-SDK signer ceiling.
+ */
+const SIGNATURE_TIMEOUT_MS = 30_000;
+
+/**
+ * Race a promise against a finite timer. On timeout, rejects with a `TIMEOUT` {@link ConsentError}
+ * rather than hanging, and always clears the timer so a settled promise cannot leak it. Kept in the
+ * spirit of {@link NetworkService}'s `AbortController`/`setTimeout` timeout, applied to a
+ * caller-supplied promise the SDK cannot abort.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new ConsentError('TIMEOUT', message)), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+/**
  * Raw wire shape of a `GET /universal_consent` response, parsed into the camelCase
  * {@link UniversalConsentRecord}.
  *
@@ -176,14 +198,20 @@ export class UniversalConsentService {
       const nonce = generateNonceHex();
       const stringToSign = `${config.dgCustomerId}:${userHash}:${timestamp}:${nonce}`;
 
-      // Ask the customer's backend to sign. The secret never leaves their backend.
-      const sig = await getSignature({
-        stringToSign,
-        customerId: config.dgCustomerId,
-        userHash,
-        timestamp,
-        nonce,
-      });
+      // Ask the customer's backend to sign. The secret never leaves their backend. Bound the wait
+      // on this customer-controlled callback: it hits the customer's own backend, so a hung or
+      // unresponsive signer must reject the write within SIGNATURE_TIMEOUT_MS rather than hanging.
+      const sig = await withTimeout(
+        getSignature({
+          stringToSign,
+          customerId: config.dgCustomerId,
+          userHash,
+          timestamp,
+          nonce,
+        }),
+        SIGNATURE_TIMEOUT_MS,
+        `getSignature did not resolve within ${SIGNATURE_TIMEOUT_MS}ms`,
+      );
 
       headers['X-DG-Signature'] = sig.signature;
       headers['X-DG-Timestamp'] = String(timestamp);
