@@ -1,4 +1,4 @@
-import type { ExpoConfig } from 'expo/config-plugins';
+import type { ExpoConfig } from '@expo/config-types';
 import { withATTDescription } from '../../expo-plugin/src/withATTDescription';
 
 describe('withATTDescription', () => {
@@ -6,7 +6,9 @@ describe('withATTDescription', () => {
     const config = { name: 'TestApp', slug: 'test-app' } as ExpoConfig;
     const description = 'We use tracking to show relevant content.';
 
-    const result = withATTDescription(config, description) as ExpoConfig & { _modResults: Record<string, string> };
+    const result = withATTDescription(config, description) as ExpoConfig & {
+      _modResults: Record<string, string>;
+    };
 
     expect(result._modResults.NSUserTrackingUsageDescription).toBe(description);
   });
@@ -15,7 +17,9 @@ describe('withATTDescription', () => {
     const config = { name: 'TestApp', slug: 'test-app' } as ExpoConfig;
     const customDescription = 'Custom ATT description for this app.';
 
-    const result = withATTDescription(config, customDescription) as ExpoConfig & { _modResults: Record<string, string> };
+    const result = withATTDescription(config, customDescription) as ExpoConfig & {
+      _modResults: Record<string, string>;
+    };
 
     expect(result._modResults.NSUserTrackingUsageDescription).toBe(customDescription);
   });

@@ -2,15 +2,15 @@
 
 ## Supported Versions
 
-| Version         | Supported          |
-| --------------- | ------------------ |
-| 0.1.x (latest)  | :white_check_mark: |
+| Version        | Supported          |
+| -------------- | ------------------ |
+| 0.1.x (latest) | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
 **Please do NOT file public GitHub issues for security vulnerabilities.**
 
-If you discover a security vulnerability in `@datagrail/react-native-consent`, please report it responsibly by emailing:
+If you discover a security vulnerability in `@datagrail.io/react-native-consent`, please report it responsibly by emailing:
 
 **security@datagrail.com**
 
@@ -36,7 +36,7 @@ If you discover a security vulnerability in `@datagrail/react-native-consent`, p
 
 ### Scope
 
-This policy applies to the `@datagrail/react-native-consent` npm package and its bundled dependencies. For vulnerabilities in the DataGrail platform or APIs, please contact security@datagrail.com directly.
+This policy applies to the `@datagrail.io/react-native-consent` npm package and its bundled dependencies. For vulnerabilities in the DataGrail platform or APIs, please contact security@datagrail.com directly.
 
 ## Security Best Practices
 

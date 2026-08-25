@@ -1,7 +1,7 @@
-# @datagrail/react-native-consent
+# @datagrail.io/react-native-consent
 
-[![npm version](https://img.shields.io/npm/v/@datagrail/react-native-consent.svg)](https://www.npmjs.com/package/@datagrail/react-native-consent)
-[![CI](https://github.com/datagrail/react-native-consent/actions/workflows/ci.yml/badge.svg)](https://github.com/datagrail/react-native-consent/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/@datagrail.io/react-native-consent.svg)](https://www.npmjs.com/package/@datagrail.io/react-native-consent)
+[![CI](https://github.com/datagrail/consent-react/actions/workflows/ci.yml/badge.svg)](https://github.com/datagrail/consent-react/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 
 Privacy consent management SDK for React Native 0.76+ (New Architecture). Config-driven consent banners, synchronous preference reads via MMKV, offline resilience, ATT integration, and WebView consent injection — all from a single cross-platform package.
@@ -21,7 +21,7 @@ Privacy consent management SDK for React Native 0.76+ (New Architecture). Config
 ## Installation
 
 ```bash
-npm install @datagrail/react-native-consent
+npm install @datagrail.io/react-native-consent
 ```
 
 For iOS, install CocoaPods dependencies:
@@ -40,8 +40,8 @@ import {
   needsConsent,
   isCategoryEnabled,
   onConsentChanged,
-} from '@datagrail/react-native-consent';
-import { Banner } from '@datagrail/react-native-consent';
+} from '@datagrail.io/react-native-consent';
+import { Banner } from '@datagrail.io/react-native-consent';
 
 // Initialize at app startup
 await initialize({
@@ -188,7 +188,7 @@ interface UniversalConsentRecord {
 Config-driven consent banner that renders based on your DataGrail layout configuration.
 
 ```typescript
-import { Banner } from '@datagrail/react-native-consent';
+import { Banner } from '@datagrail.io/react-native-consent';
 
 <Banner
   onConsentSaved={(preferences) => console.log('Saved:', preferences)}
@@ -210,7 +210,7 @@ import { Banner } from '@datagrail/react-native-consent';
 Category toggle UI for granular consent management.
 
 ```typescript
-import { PreferenceCenter } from '@datagrail/react-native-consent';
+import { PreferenceCenter } from '@datagrail.io/react-native-consent';
 
 <PreferenceCenter
   onSave={(preferences) => console.log('Saved:', preferences)}
@@ -242,7 +242,10 @@ Add `NSUserTrackingUsageDescription` to your `ios/<app>/Info.plist`:
 ### 2. Request authorization
 
 ```typescript
-import { requestTrackingAuthorization, getTrackingStatus } from '@datagrail/react-native-consent';
+import {
+  requestTrackingAuthorization,
+  getTrackingStatus,
+} from '@datagrail.io/react-native-consent';
 
 // Prompt the user (shows native iOS dialog)
 const status = await requestTrackingAuthorization();
@@ -263,7 +266,7 @@ const currentStatus = getTrackingStatus();
 Inject consent state into WebViews so your web content respects the same consent choices:
 
 ```typescript
-import { getConsentInjectionScript } from '@datagrail/react-native-consent';
+import { getConsentInjectionScript } from '@datagrail.io/react-native-consent';
 import { WebView } from 'react-native-webview';
 
 function MyWebView() {
@@ -398,7 +401,7 @@ Add to your `app.json` or `app.config.js`:
   "expo": {
     "plugins": [
       [
-        "@datagrail/react-native-consent/expo-plugin",
+        "@datagrail.io/react-native-consent/expo-plugin",
         {
           "trackingDescription": "We use tracking to personalize your experience."
         }

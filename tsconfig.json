@@ -2,7 +2,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "@datagrail/react-native-consent": ["./src/index"]
+      "@datagrail.io/react-native-consent": ["./src/index"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,

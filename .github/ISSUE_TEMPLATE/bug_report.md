@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in @datagrail/react-native-consent
+about: Report a bug in @datagrail.io/react-native-consent
 title: ''
 labels: bug
 assignees: ''
@@ -8,11 +8,11 @@ assignees: ''
 
 ## Environment
 
-- **SDK version**: 
-- **React Native version**: 
+- **SDK version**:
+- **React Native version**:
 - **Platform**: iOS / Android / Both
-- **Device/Simulator**: 
-- **OS version**: 
+- **Device/Simulator**:
+- **OS version**:
 
 ## Description
 
@@ -20,9 +20,9 @@ A clear and concise description of the bug.
 
 ## Steps to Reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Expected Behavior
 

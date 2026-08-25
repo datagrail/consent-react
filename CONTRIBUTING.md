@@ -1,4 +1,4 @@
-# Contributing to @datagrail/react-native-consent
+# Contributing to @datagrail.io/react-native-consent
 
 Thank you for your interest in contributing! This document covers how to set up the project for development and our expectations for contributions.
 
@@ -13,7 +13,7 @@ Thank you for your interest in contributing! This document covers how to set up 
 
 ```bash
 # Clone the repository
-git clone https://github.com/datagrail/react-native-consent.git
+git clone https://github.com/datagrail/consent-react.git
 cd react-native-consent
 
 # Install dependencies

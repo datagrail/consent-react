@@ -9,7 +9,7 @@ const sdkRoot = path.resolve(projectRoot, '..');
 // Otherwise (default) run against src/ with live reloading. See `resolveRequest`
 // below for the redirect and the `*:lib` scripts in package.json.
 const useBuiltLib = !!process.env.USE_BUILT_LIB;
-const SDK_PACKAGE = '@datagrail/react-native-consent';
+const SDK_PACKAGE = '@datagrail.io/react-native-consent';
 const sdkBuiltEntry = path.resolve(sdkRoot, 'lib/module/index.js');
 
 const config = getDefaultConfig(projectRoot);

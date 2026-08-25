@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { getPreferences, getConfig, onConsentChanged } from '@datagrail/react-native-consent';
-import type { ConsentPreferences, ConsentConfig } from '@datagrail/react-native-consent';
+import { getPreferences, getConfig, onConsentChanged } from '@datagrail.io/react-native-consent';
+import type { ConsentPreferences, ConsentConfig } from '@datagrail.io/react-native-consent';
 import { JsonViewer } from '../components/JsonViewer';
 import { EventLog } from '../components/EventLog';
 import { createLogEntry } from '../utils/mockConfig';

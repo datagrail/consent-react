@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, Switch, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { retryPendingRequests, reset } from '@datagrail/react-native-consent';
+import { retryPendingRequests, reset } from '@datagrail.io/react-native-consent';
 import { ResultDisplay } from '../components/ResultDisplay';
 import type { ResultValue } from '../components/ResultDisplay';
 import { EventLog } from '../components/EventLog';

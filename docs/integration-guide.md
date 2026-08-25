@@ -1,6 +1,6 @@
 # Integration Guide
 
-Step-by-step guide for integrating `@datagrail/react-native-consent` into your React Native application.
+Step-by-step guide for integrating `@datagrail.io/react-native-consent` into your React Native application.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ Step-by-step guide for integrating `@datagrail/react-native-consent` into your R
 ## 1. Install the Package
 
 ```bash
-npm install @datagrail/react-native-consent
+npm install @datagrail.io/react-native-consent
 ```
 
 ## 2. iOS Setup
@@ -46,7 +46,7 @@ Initialize the SDK as early as possible in your app lifecycle. The `initialize` 
 ```typescript
 // App.tsx
 import { useEffect, useState } from 'react';
-import { initialize, needsConsent } from '@datagrail/react-native-consent';
+import { initialize, needsConsent } from '@datagrail.io/react-native-consent';
 
 function App() {
   const [ready, setReady] = useState(false);
@@ -81,7 +81,7 @@ function App() {
 Use the `Banner` component to display the config-driven consent UI:
 
 ```typescript
-import { Banner } from '@datagrail/react-native-consent';
+import { Banner } from '@datagrail.io/react-native-consent';
 
 function ConsentBannerScreen() {
   return (
@@ -106,7 +106,7 @@ The banner layout, text, buttons, and categories are all driven by your DataGrai
 Gate features and third-party SDKs on consent status:
 
 ```typescript
-import { isCategoryEnabled } from '@datagrail/react-native-consent';
+import { isCategoryEnabled } from '@datagrail.io/react-native-consent';
 
 // Before initializing analytics
 if (isCategoryEnabled('dg-category-analytics')) {
@@ -132,14 +132,14 @@ Subscribe to consent updates to react in real time (e.g., tear down analytics if
 
 ```typescript
 import { useEffect } from 'react';
-import { onConsentChanged } from '@datagrail/react-native-consent';
+import { onConsentChanged } from '@datagrail.io/react-native-consent';
 
 function useConsentListener() {
   useEffect(() => {
     const unsubscribe = onConsentChanged((preferences) => {
       // Re-evaluate which SDKs should be active
       const analyticsEnabled = preferences.cookieOptions.find(
-        (opt) => opt.gtmKey === 'dg-category-analytics'
+        (opt) => opt.gtmKey === 'dg-category-analytics',
       )?.isEnabled;
 
       if (!analyticsEnabled) {
@@ -157,7 +157,7 @@ function useConsentListener() {
 If your app uses WebViews that need to respect consent choices:
 
 ```typescript
-import { getConsentInjectionScript } from '@datagrail/react-native-consent';
+import { getConsentInjectionScript } from '@datagrail.io/react-native-consent';
 import { WebView } from 'react-native-webview';
 
 function ConsentAwareWebView({ uri }: { uri: string }) {
@@ -186,7 +186,7 @@ if (window.__dgConsentReady) {
 
 function applyConsent(consent) {
   const analyticsAllowed = consent.preferences.cookieOptions.some(
-    opt => opt.gtmKey === 'dg-category-analytics' && opt.isEnabled
+    (opt) => opt.gtmKey === 'dg-category-analytics' && opt.isEnabled,
   );
   // Gate scripts accordingly
 }
@@ -202,9 +202,12 @@ Add the plugin to `app.json`:
 {
   "expo": {
     "plugins": [
-      ["@datagrail/react-native-consent/expo-plugin", {
-        "trackingDescription": "We use tracking to personalize your experience and measure ad effectiveness."
-      }]
+      [
+        "@datagrail.io/react-native-consent/expo-plugin",
+        {
+          "trackingDescription": "We use tracking to personalize your experience and measure ad effectiveness."
+        }
+      ]
     ]
   }
 }
@@ -223,7 +226,7 @@ This automatically adds `NSUserTrackingUsageDescription` to your Info.plist. No 
 ### Mock the SDK in unit tests
 
 ```typescript
-// __mocks__/@datagrail/react-native-consent.ts
+// __mocks__/@datagrail.io/react-native-consent.ts
 export const initialize = jest.fn().mockResolvedValue(undefined);
 export const needsConsent = jest.fn().mockReturnValue(false);
 export const isCategoryEnabled = jest.fn().mockReturnValue(true);

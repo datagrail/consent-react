@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-DataGrail React Native Consent SDK — `@datagrail/react-native-consent`. Open-source (Apache License, Version 2.0), TypeScript-first privacy consent management for React Native 0.76+ (New Architecture only — TurboModules/Fabric).
+DataGrail React Native Consent SDK — `@datagrail.io/react-native-consent`. Open-source (Apache License, Version 2.0), TypeScript-first privacy consent management for React Native 0.76+ (New Architecture only — TurboModules/Fabric).
 
 Feature parity with `consent-ios` (Swift) and `consent-android` (Kotlin) native SDKs. Synchronous consent reads via MMKV, offline queue, exponential backoff retry, config-driven banner UI.
 

@@ -1,5 +1,5 @@
 /**
- * Manual mock for expo/config-plugins.
+ * Manual mock for @expo/config-plugins.
  * Provides a minimal implementation of withInfoPlist for testing.
  */
 
