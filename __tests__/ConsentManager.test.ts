@@ -429,6 +429,8 @@ describe('ConsentManager', () => {
       expect(url).toContain('config_version=cc959465-747d-4c81-8bc1-5dcd34dc3756');
       expect(url).toContain('consent_id=');
       expect(url).toContain('timestamp=');
+      expect(url).toContain('library_version=');
+      expect(url).toContain('os_version=');
     });
 
     it('should not throw on network error', async () => {

@@ -23,6 +23,8 @@ import type {
 } from './universal/types';
 import { readTrackingSignal } from './platform/trackingSignal';
 import { signalSuppressesNonEssential } from './platform/attShared';
+import { Platform } from 'react-native';
+import { SDK_VERSION } from './version';
 
 // Internal state — module-level singleton pattern (matches native SDKs)
 let initialized = false;
@@ -479,6 +481,8 @@ export async function trackBannerShown(): Promise<void> {
     consent_id: consentId,
     config_version: currentConfig!.version,
     timestamp,
+    library_version: SDK_VERSION,
+    os_version: `${Platform.OS} ${Platform.Version}`,
   });
 
   const url = `https://${currentConfig!.privacyDomain}/save_open?${params.toString()}`;
