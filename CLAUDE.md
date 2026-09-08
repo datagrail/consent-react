@@ -162,7 +162,7 @@ backend. Do not change any of these without changing all of them:
 All relative to `https://{privacyDomain}/`:
 
 - `GET {configUrl}` — fetch config JSON (save_open tracks impressions)
-- `GET /save_open?dg_customer_id=X&consent_id=Y&config_version=Z&timestamp=T&library_version=V&os_version=O` — track banner shown
+- `GET /save_open?dg_customer_id=X&consent_id=Y&config_version=Z&timestamp=T&library_version=V&os_version=O&schema_version=S` — track banner shown
 - `POST /save_preferences` — body: `{ dg_customer_id, consent_id, config_version, is_customised, cookie_options: [{gtm_key, is_enabled}], timestamp }`
 - `GET /universal_consent?customer_id=X&user_hash=Y` — read a cross-device record
 - `POST /universal_consent` — body: `{ customer_id, user_hash, consent_preferences: { isCustomised, cookieOptions: {key: bool} }, consent_mode, ccpa_optout, platform, policy_name, config_version }`
