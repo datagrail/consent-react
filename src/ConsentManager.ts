@@ -482,7 +482,12 @@ export async function trackBannerShown(): Promise<void> {
     config_version: currentConfig!.version,
     timestamp,
     library_version: SDK_VERSION,
-    os_version: `${Platform.OS} ${Platform.Version}`,
+    // Bare OS version string, no platform-name prefix — matches the native
+    // SDKs' os_version shape (UIDevice.systemVersion on iOS,
+    // Build.VERSION.RELEASE on Android). `Platform.Version` is the API level
+    // integer on Android, not the release string, so it needs the
+    // `constants.Release` field instead.
+    os_version: Platform.OS === 'android' ? Platform.constants.Release : String(Platform.Version),
     schema_version: CONFIG_SCHEMA_VERSION,
   });
 
