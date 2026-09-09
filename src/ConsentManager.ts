@@ -23,6 +23,8 @@ import type {
 } from './universal/types';
 import { readTrackingSignal } from './platform/trackingSignal';
 import { signalSuppressesNonEssential } from './platform/attShared';
+import { Platform } from 'react-native';
+import { CONFIG_SCHEMA_VERSION, SDK_VERSION } from './version';
 
 // Internal state — module-level singleton pattern (matches native SDKs)
 let initialized = false;
@@ -479,6 +481,18 @@ export async function trackBannerShown(): Promise<void> {
     consent_id: consentId,
     config_version: currentConfig!.version,
     timestamp,
+    library_version: SDK_VERSION,
+    // Bare OS version string, no platform-name prefix — matches the native
+    // SDKs' os_version shape (UIDevice.systemVersion on iOS,
+    // Build.VERSION.RELEASE on Android). `Platform.Version` is the API level
+    // integer on Android, not the release string, so it needs the
+    // `constants.Release` field instead. Falls back to 'unknown' rather than
+    // emitting the literal 'undefined' on a platform without a version (e.g.
+    // RN Web), and `?.` guards a jest Platform mock that omits `constants`.
+    os_version:
+      (Platform.OS === 'android' ? Platform.constants?.Release : Platform.Version)?.toString() ??
+      'unknown',
+    schema_version: CONFIG_SCHEMA_VERSION,
   });
 
   const url = `https://${currentConfig!.privacyDomain}/save_open?${params.toString()}`;
