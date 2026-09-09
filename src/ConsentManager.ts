@@ -486,8 +486,12 @@ export async function trackBannerShown(): Promise<void> {
     // SDKs' os_version shape (UIDevice.systemVersion on iOS,
     // Build.VERSION.RELEASE on Android). `Platform.Version` is the API level
     // integer on Android, not the release string, so it needs the
-    // `constants.Release` field instead.
-    os_version: Platform.OS === 'android' ? Platform.constants.Release : String(Platform.Version),
+    // `constants.Release` field instead. Falls back to 'unknown' rather than
+    // emitting the literal 'undefined' on a platform without a version (e.g.
+    // RN Web), and `?.` guards a jest Platform mock that omits `constants`.
+    os_version:
+      (Platform.OS === 'android' ? Platform.constants?.Release : Platform.Version)?.toString() ??
+      'unknown',
     schema_version: CONFIG_SCHEMA_VERSION,
   });
 

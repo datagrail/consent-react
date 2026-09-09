@@ -431,6 +431,7 @@ describe('ConsentManager', () => {
       expect(url).toContain('timestamp=');
       expect(url).toContain('library_version=');
       expect(url).toContain('os_version=');
+      expect(url).not.toContain('os_version=undefined');
       expect(url).toContain('schema_version=v1');
     });
 
