@@ -34,6 +34,7 @@ import {
   fetchUniversalConsent,
   rehydrateFromUniversalConsent,
   setUserIdentifier,
+  clearUserIdentifier,
   ConsentError,
 } from '../src/index';
 import type {
@@ -96,6 +97,7 @@ describe('Public API — end to end', () => {
     expect(typeof fetchUniversalConsent).toBe('function');
     expect(typeof rehydrateFromUniversalConsent).toBe('function');
     expect(typeof setUserIdentifier).toBe('function');
+    expect(typeof clearUserIdentifier).toBe('function');
     expect(ConsentError).toBeDefined();
   });
 

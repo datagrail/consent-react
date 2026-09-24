@@ -90,12 +90,13 @@ const unsubscribe = onConsentChanged((preferences) => {
 
 Cross-device consent. Available when `universalConsent.enabled` is set on your DataGrail config; otherwise these throw a `ConsentError`.
 
-| Method                          | Parameters                                                               | Return Type                               | Description                                                              |
-| ------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `isUniversalConsentEnabled`     | —                                                                        | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
-| `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
-| `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
-| `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
+| Method                          | Parameters                                                                                        | Return Type                               | Description                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| `isUniversalConsentEnabled`     | —                                                                                                 | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
+| `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`                                  | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
+| `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`                                  | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
+| `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal?, attachAnonymousConsent? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
+| `clearUserIdentifier`           | —                                                                                                 | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
 
 ### ATT Methods (iOS)
 
@@ -370,6 +371,26 @@ await setUserIdentifier(user.email, { apiKey: DG_API_KEY, getSignature });
 ```
 
 To inspect a record without changing local state, use `fetchUniversalConsent` instead.
+
+### 4. Clear the identifier on logout
+
+```typescript
+import { clearUserIdentifier } from '@datagrail.io/react-native-consent';
+
+clearUserIdentifier();
+```
+
+This returns the device to neutral: the stored choice is removed, reads return your config's defaults, the banner shows again, and `onConsentChanged` listeners fire with the defaults. It is not `reset()`: nothing goes over the network, the user's cross-device record is left as it is, and the device ID, cached config and offline queue are kept. The SDK stays initialized.
+
+### Shared devices and pre-login choices
+
+The SDK remembers which identity the device is bound to (by hash only). If a choice was made on the device before login and the user logging in has **no** stored record, that choice is **not** written to their record by default. The SDK can't tell whether the person logging in made it or an earlier user of the same device did. Instead, local consent goes back to the default and the banner collects this user's own choice. Once the device is bound, later `setUserIdentifier` calls for the same user sync local choices as usual. A stored record found for the user is applied as described below, whatever the device was bound to.
+
+Some things the SDK cannot detect:
+
+- **Logout.** It only knows when you tell it, so call `clearUserIdentifier()` whenever the user logs out.
+- **Who made a pre-login choice.** There is no shared-device or shared-account heuristic. If your app knows the choice and the login happened in the same session, pass `attachAnonymousConsent: true` to `setUserIdentifier` and the choice is written to the new record.
+- **Two people sharing one account.** When a found record conflicts with a local choice, that is handled separately (TRUST-2592) and this does not change it.
 
 ### How signals are applied
 

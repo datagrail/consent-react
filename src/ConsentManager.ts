@@ -204,8 +204,15 @@ export function onConsentChanged(listener: ConsentChangeListener): Unsubscribe {
   return eventEmitter.addListener(listener);
 }
 
+/**
+ * Destructive full wipe: clears ALL stored state (consent choice, unique id, config cache, pending
+ * queue, identity binding) and de-initializes the SDK. For logout, use `clearUserIdentifier()`,
+ * which is non-destructive.
+ */
 export function reset(): void {
   if (storageService) {
+    // clearAll() also removes the Universal Consent identity binding (BOUND_USER_HASH lives in
+    // the same MMKV instance).
     storageService.clearAll();
   }
   currentConfig = null;
@@ -215,6 +222,51 @@ export function reset(): void {
 }
 
 // --- Universal Consent ---
+
+/**
+ * Return local consent to NEUTRAL — what a first-time visitor sees on a fresh install of this
+ * device: the explicit choice is removed, the config's defaults are persisted exactly as
+ * `initialize()` does when nothing is saved, and the banner shows again (`needsConsent()` true,
+ * `hasUserConsent()` false). Fires the consent-changed listener with the now-effective defaults,
+ * the same way rehydration does, so the host can re-gate its SDKs.
+ *
+ * Local only: no network call, and the unique id, config cache, config version and offline queue
+ * are untouched. Does NOT touch the identity binding — callers decide that.
+ */
+function returnToNeutral(): void {
+  storageService!.clearUserChoice();
+  // Same default path initialize() takes when no preferences are saved (resolve → getDefaults).
+  const { preferences } = ConsentResolver.resolve(currentConfig!, null, null);
+  storageService!.savePreferences(preferences);
+  storageService!.saveConfigVersion(currentConfig!.version);
+  eventEmitter.emit(preferences);
+}
+
+/**
+ * Log the current user out of Universal Consent and return this device to NEUTRAL.
+ *
+ * Call this on logout. The SDK cannot detect a logout it is not told about, so without this call
+ * the previous user's choice keeps applying on this device and the next `setUserIdentifier` for a
+ * different person would be treated as though they had made it.
+ *
+ * Clears the device's identity binding and removes the stored explicit consent choice, so reads
+ * return the config's defaults as on a fresh install: the banner shows again, `needsConsent()` is
+ * `true` and `hasUserConsent()` is `false`. The consent-changed listener fires with those defaults.
+ *
+ * Non-destructive, unlike `reset()`: no network call, the user's server-side Universal Consent
+ * record is NOT modified or deleted, and the device unique id, cached config, config version and
+ * pending offline queue are kept. The SDK stays initialized. Idempotent and safe to call when no
+ * user is bound. Like `reset()` it does not throw before `initialize()`.
+ */
+export function clearUserIdentifier(): void {
+  if (!storageService) {
+    return;
+  }
+  storageService.clearBoundUserHash();
+  if (initialized && currentConfig) {
+    returnToNeutral();
+  }
+}
 
 /** Whether cross-device Universal Consent is enabled for the loaded config. */
 export function isUniversalConsentEnabled(): boolean {
@@ -370,7 +422,8 @@ async function rehydrateReturningRawPreferences(
  * which the edge already holds and which would discard a choice made on this device. When a FOUND
  * record meets no local change (a fresh install that only adopted it), the call adopts-WITHOUT-
  * POST and returns without writing. A read MISS with local state still writes — it seeds the first
- * cross-device record. A read FAILURE, by contrast, rejects WITHOUT writing: the server never
+ * cross-device record — except for pre-login anonymous history on a login transition (see
+ * "Identity binding" below). A read FAILURE, by contrast, rejects WITHOUT writing: the server never
  * merges, so overwriting a record we could not read would silently erase the user's real
  * cross-device choice (the TRUST-2491 corruption class). Callers should retry, which re-reads
  * first. Cross-device conflict resolution is the edge's job, not the SDK's.
@@ -392,6 +445,25 @@ async function rehydrateReturningRawPreferences(
  * and builds the string-to-sign, but does NOT compute the HMAC. It invokes `getSignature` — which
  * calls your own backend — with that payload and expects back `{ signature, keyId }`. The shared
  * secret never touches the device. Omitting `getSignature` performs a limited, API-key-only write.
+ *
+ * Identity binding and anonymous history (TRUST-2902). The device remembers the user hash (never
+ * the raw identifier) of the identity it is bound to; a successful call binds it to this one. On a
+ * genuine MISS during a login TRANSITION — the device is unbound or bound to someone else — an
+ * explicit choice already on the device is pre-login anonymous history, possibly a previous user's
+ * on a shared device. By default it is NOT written to this identity's record: local state returns
+ * to neutral (as `clearUserIdentifier()` does, including the listener firing) and nothing is
+ * POSTed. A miss while already bound to this identity still syncs the local choice
+ * (sync-on-change), and a FOUND record is handled exactly as described above.
+ *
+ * What the SDK cannot reliably detect:
+ * - A logout it is not told about. The host MUST call `clearUserIdentifier()` on logout.
+ * - Whether a pre-login choice was made by the person now logging in or by an earlier user of a
+ *   shared device. It does no heuristic shared-device or shared-account detection. Pass
+ *   `attachAnonymousConsent: true` only when the host has its own same-session continuity signal
+ *   (e.g. the choice and the login happened in one visit); the local choice is then written to a
+ *   missing record as before.
+ * - Two people sharing one account. Conflicts between a found record and a local choice are
+ *   resolved per TRUST-2592, not here.
  */
 export async function setUserIdentifier(
   identifier: string,
@@ -399,12 +471,25 @@ export async function setUserIdentifier(
     apiKey: string;
     getSignature?: SignatureProvider;
     trackingSignal?: ATTStatus;
+    /**
+     * Attach an explicit pre-login local choice to this identity when its record is missing.
+     * Default `false`. Set it only when the host knows the choice and the login happened in the
+     * same session — the SDK cannot tell who made a pre-login choice on a shared device.
+     */
+    attachAnonymousConsent?: boolean;
   },
 ): Promise<void> {
   assertUniversalConsentEnabled();
 
   const { apiKey, getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
+  const attachAnonymousConsent = options.attachAnonymousConsent ?? false;
+
+  // Hash first: a VALIDATION_ERROR / NATIVE_ERROR fails fast here with no read, no write and no
+  // change to the binding. `wasBound` distinguishes a re-sync while logged in as this identity
+  // from a login transition (unbound device, or bound to someone else).
+  const userHash = await universalConsentService!.userHash(currentConfig!, identifier);
+  const wasBound = storageService!.loadBoundUserHash() === userHash;
 
   // Capture the user's RAW local choice BEFORE the rehydrate below overwrites storage with the
   // signal-reconciled view. Only an EXPLICIT choice counts as a local change — initialize()
@@ -429,6 +514,18 @@ export async function setUserIdentifier(
   // discard nothing the user chose here only because there was nothing to discard. The edge, not
   // the SDK, resolves cross-device conflicts. (A miss still seeds the first record below.)
   if (rawFromRecord !== null && !hadLocalChoice) {
+    storageService!.saveBoundUserHash(userHash);
+    return;
+  }
+
+  // Genuine MISS during a login transition with an explicit local choice: that choice is pre-login
+  // anonymous history — possibly a previous user's on a shared device — and the SDK cannot tell
+  // whose. Do not attribute it to this identity unless the host opted in; return to neutral instead
+  // so this user gets the banner and makes their own choice. (No explicit choice, or already bound,
+  // or opted in: fall through to the existing seed/sync-on-change write below.)
+  if (rawFromRecord === null && hadLocalChoice && !wasBound && !attachAnonymousConsent) {
+    returnToNeutral();
+    storageService!.saveBoundUserHash(userHash);
     return;
   }
 
@@ -459,6 +556,10 @@ export async function setUserIdentifier(
     false,
     getSignature,
   );
+
+  // Bind only after the write succeeds: a failed write must not bind, so a retry is still
+  // recognised as a transition (and a retry with the opt-in still writes).
+  storageService!.saveBoundUserHash(userHash);
 }
 
 export function hasUserConsent(): boolean {
