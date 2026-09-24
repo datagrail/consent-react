@@ -89,6 +89,19 @@ export class UniversalConsentService {
   }
 
   /**
+   * The Universal Consent user hash for `identifier` under this config — the same value `get` and
+   * `save` put on the wire. Lets callers key device-local state (the identity binding) by hash
+   * without ever persisting the raw identifier.
+   *
+   * @throws ConsentError `VALIDATION_ERROR` for a missing `consentProjectId` or an identifier that
+   *   is empty after normalization; `NATIVE_ERROR` when the hashing bridge fails.
+   */
+  async userHash(config: ConsentConfig, identifier: string): Promise<string> {
+    const projectId = UniversalConsentService.requireProjectId(config);
+    return computeUserHash(config.dgCustomerId, projectId, identifier);
+  }
+
+  /**
    * Read a user's Universal Consent record for cross-device rehydration.
    *
    * `GET /universal_consent?customer_id=..&user_hash=..` with an `X-DG-Api-Key` header. Reads

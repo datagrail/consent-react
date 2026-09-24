@@ -43,9 +43,7 @@ describe('StorageService', () => {
   describe('uniqueId', () => {
     it('should create a UUID on first call', () => {
       const id = storage.getOrCreateUniqueId();
-      expect(id).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
-      );
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     });
 
     it('should return the same ID on subsequent calls', () => {
@@ -158,9 +156,48 @@ describe('StorageService', () => {
       expect(storage.loadConfigVersion()).toBeNull();
     });
 
+    it('should clear the identity binding', () => {
+      storage.saveBoundUserHash('hash-a');
+      storage.clearAll();
+      expect(storage.loadBoundUserHash()).toBeNull();
+    });
+
     it('should set schema version after clear', () => {
       storage.clearAll();
       expect(storage.getSchemaVersion()).toBe(CURRENT_SCHEMA_VERSION);
+    });
+  });
+
+  describe('bound user hash', () => {
+    it('returns null when unbound', () => {
+      expect(storage.loadBoundUserHash()).toBeNull();
+    });
+
+    it('persists and clears the binding', () => {
+      storage.saveBoundUserHash('hash-a');
+      expect(storage.loadBoundUserHash()).toBe('hash-a');
+      storage.clearBoundUserHash();
+      expect(storage.loadBoundUserHash()).toBeNull();
+    });
+  });
+
+  describe('clearUserChoice', () => {
+    it('removes preferences and the consented flag, keeping everything else', () => {
+      storage.savePreferences({ isCustomised: true, cookieOptions: [] });
+      storage.setUserConsented(true);
+      storage.saveConfigVersion('v1');
+      storage.saveBoundUserHash('hash-a');
+      storage.savePendingEvents([{ id: 1 }]);
+      const id = storage.getOrCreateUniqueId();
+
+      storage.clearUserChoice();
+
+      expect(storage.loadPreferences()).toBeNull();
+      expect(storage.hasUserConsented()).toBe(false);
+      expect(storage.loadConfigVersion()).toBe('v1');
+      expect(storage.loadBoundUserHash()).toBe('hash-a');
+      expect(storage.loadPendingEvents()).toEqual([{ id: 1 }]);
+      expect(storage.getOrCreateUniqueId()).toBe(id);
     });
   });
 
