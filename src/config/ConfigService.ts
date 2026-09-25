@@ -134,6 +134,8 @@ export class ConfigService {
       config.universalConsent = {
         enabled: parsed.universalConsent.enabled ?? false,
         syncOptout: parsed.universalConsent.sync_optout ?? false,
+        // Set only when present, for the reason noted above (TRUST-2603).
+        ...(parsed.universalConsent.apiKey ? { apiKey: parsed.universalConsent.apiKey } : {}),
       };
     }
 
