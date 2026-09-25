@@ -238,7 +238,9 @@ function returnToNeutral(): void {
   // Same default path initialize() takes when no preferences are saved (resolve → getDefaults).
   const { preferences } = ConsentResolver.resolve(currentConfig!, null, null);
   storageService!.savePreferences(preferences);
-  storageService!.saveConfigVersion(currentConfig!.version);
+  // Leave the persisted config version untouched: logout is non-destructive (see clearUserIdentifier
+  // docs). needsConsent() returns true here anyway because the user-consented flag is now cleared,
+  // so re-stamping the version would only break that documented contract with no behavioural gain.
   eventEmitter.emit(preferences);
 }
 
