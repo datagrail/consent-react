@@ -156,8 +156,9 @@ backend. Do not change any of these without changing all of them:
 - **Login attribution rule (TRUST-2902).** The device persists the bound user hash
   (`BOUND_USER_HASH`, never the raw identifier), written only by `setUserIdentifier` after it
   succeeds. "Explicit" = `hasUserConsented()` (not stored prefs, which `initialize()` seeds) AND
-  the device is not bound to a different hash. LOGIN (unbound or bound elsewhere): found → adopt,
-  never write; miss + explicit → write the raw local choice; miss otherwise → no write (neutral if
+  the device is not bound to a different hash. LOGIN (unbound or bound elsewhere): found → REPLACE
+  local (record's reconciled values; unmentioned categories = config default, essential on), never
+  write; found with no choice → neutral if explicit/bound-elsewhere state is stored, else no-op; miss + explicit → write the raw local choice; miss otherwise → no write (neutral if
   bound elsewhere). RE-SYNC (bound to this hash): found + local change → write-through; miss →
   write only an explicit choice. Config defaults are never seeded.
 - **`rehydrateFromUniversalConsent` must call `setUserConsented(true)`.** RN's `needsConsent()`

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A 4xx config fetch (other than 408/429) no longer rejects with `NETWORK_ERROR`; 408, 429, 5xx and transport failures still do (TRUST-2745)
 - `setUserIdentifier` now binds the device to the user's hash and treats a call for an unbound device, or for a different identity than the bound one, as a login (TRUST-2902):
-  - If a record is found, it is adopted locally and nothing is written, even when the device holds a pre-login choice.
+  - If a record is found, it replaces local consent: categories it carries take its value, and every other category takes the config default. Nothing is written, even when the device holds a pre-login choice. If the record holds no consent choice, local consent returns to neutral when the device held a choice or another user's state.
   - If no record is found, only an explicit local choice is written (the user chose on this device while it was not bound to someone else).
   - Otherwise nothing is written. If the device was bound to another user, local consent returns to neutral.
 - A miss no longer seeds a record from config defaults, on login or re-sync. Re-sync write-through over a found record is unchanged.

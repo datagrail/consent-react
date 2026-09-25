@@ -386,7 +386,7 @@ This returns the device to neutral: the stored choice is removed, reads return y
 
 The SDK remembers which identity the device is bound to (by hash only). A `setUserIdentifier` call for a different identity than the bound one, or on an unbound device, is a **login**:
 
-- **The user has a stored record:** the record wins. It is applied locally and nothing is written, even if a choice was made on the device before login. That pre-login choice is dropped.
+- **The user has a stored record:** the record wins and nothing is written, even if a choice was made on the device before login. That pre-login choice is dropped. The record replaces local consent rather than merging with it: each category it carries takes the record's value, and every other category takes your config default (essential stays on). If the record holds no consent choice, local consent returns to the default when it held a choice or another user's state, and is left alone otherwise.
 - **No stored record, and the user made an explicit choice on this device** (banner, `savePreferences`, `acceptAll`, `rejectAll`) while it was not bound to someone else: the choice is written as the user's first record.
 - **No stored record and no explicit choice:** nothing is written. Config defaults are never saved as a choice, and local consent stays as it is. If the device was still bound to a different user, local consent returns to the default so that user's state does not carry over.
 
