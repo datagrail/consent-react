@@ -469,13 +469,15 @@ export async function rehydrateFromUniversalConsent(
  * cross-device record as though the user had chosen it. Returning the raw map lets the write carry
  * what the user actually consented to.
  *
- * `recordFound` is `true` whenever the server returned a record, even one with no usable consent
- * choice (`consentPreferences` null or an empty map) — `rawCookieOptions` is `null` in that case,
- * exactly as on a miss. `setUserIdentifier` needs the distinction on a login.
+ * `recordFound` is `true` whenever the server returned a record, even a signal-only one whose
+ * `consentPreferences` is absent (`null`) — `rawCookieOptions` is `null` in that case, exactly as
+ * on a miss. A record whose `consentPreferences` block is PRESENT is an answered choice and is
+ * applied, even when its `cookieOptions` map is empty (essential-only, TRUST-2961): `rawCookieOptions`
+ * is that (possibly empty) map, not `null`. `setUserIdentifier` needs the distinction on a login.
  *
  * `recordCcpaOptout` is the found record's stored `ccpa_optout` (`null` on a miss). When the record's
  * consent choice is applied, the local CCPA opt-out flag is set to it too (TRUST-2591): the record is
- * authoritative for the stored choice. On a found record with no usable choice nothing is applied
+ * authoritative for the stored choice. On a found record with an absent choice nothing is applied
  * here; `setUserIdentifier` decides.
  *
  * `fillFromNeutral` (login only, TRUST-2902): categories the record does not mention take the
@@ -500,18 +502,20 @@ async function rehydrateReturningRawPreferences(
   // already-reconciled record. Both views are needed here: the reconciled one to persist locally,
   // the raw one to hand back for the write.
   const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
-  const rawCookieOptions = record?.consentPreferences?.cookieOptions;
 
-  // An empty map carries no category state to apply. Saving it would store preferences with
-  // nothing in them, and because isCategoryEnabled() defaults an unknown key to false, that
-  // reads back as a blanket opt-out the user never made — while also hiding the banner.
-  if (!rawCookieOptions || Object.keys(rawCookieOptions).length === 0) {
+  // ABSENT consent_preferences — a miss (no record), or a found signal-only record — carries no
+  // answered choice, so there is nothing to apply. A PRESENT consent_preferences block IS an
+  // answered choice even when its cookieOptions map is empty (the user accepted essential-only):
+  // TRUST-2961 — only a null/absent block, not an empty map, is "no choice". This matches iOS and
+  // web, and stops re-prompting a user who already answered essential-only on another device.
+  if (!record?.consentPreferences) {
     return {
       recordFound: record !== null,
       rawCookieOptions: null,
       recordCcpaOptout: record?.ccpaOptout ?? null,
     };
   }
+  const rawCookieOptions = record.consentPreferences.cookieOptions ?? {};
 
   // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
   // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
@@ -582,9 +586,11 @@ async function rehydrateReturningRawPreferences(
  * - LOGIN + FOUND record: the record wins. It REPLACES local state — categories it carries take
  *   its (signal-reconciled) value, every other category takes the config default (essential on),
  *   never the prior local value — and nothing is written, even if the device holds an explicit
- *   pre-login choice; that choice is dropped. A found record with no consent choice (signal-only)
- *   returns local state to neutral if anything explicit or another user's state is stored, and is
- *   a no-op otherwise; nothing is written either way.
+ *   pre-login choice; that choice is dropped. A present consent_preferences block is an answered
+ *   choice even when its cookieOptions map is empty (essential-only, TRUST-2961). A found record
+ *   whose consent_preferences is ABSENT (signal-only) returns local state to neutral if anything
+ *   explicit or another user's state is stored, and is a no-op otherwise; nothing is written either
+ *   way.
  * - LOGIN + MISS + EXPLICIT local choice: the choice is attached — written as this identity's
  *   first record.
  * - LOGIN + MISS + no explicit choice: nothing is written; config defaults are never seeded as a
@@ -682,8 +688,9 @@ export async function setUserIdentifier(
   );
 
   if (rawFromRecord === null && recordFound && !isResync) {
-    // LOGIN + FOUND record with no consent choice (signal-only / empty preferences). There is
-    // nothing to adopt, but the record's existence means the device's own state must not be
+    // LOGIN + FOUND signal-only record (consent_preferences ABSENT — TRUST-2961: a present block
+    // with an empty map is an answered essential-only choice and is adopted above, not here). There
+    // is nothing to adopt, but the record's existence means the device's own state must not be
     // attached either: drop it to neutral if anything explicit or another user's state is stored
     // (no-op, and no listener, when local is already neutral). Never a write.
     if (hadConsentedFlag || boundToOther) {
