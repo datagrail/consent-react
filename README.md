@@ -98,6 +98,13 @@ Cross-device consent. Available when `universalConsent.enabled` is set on your D
 | `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
 | `clearUserIdentifier`           | —                                                                        | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
 
+CCPA "Do Not Sell or Share" (works with or without Universal Consent; see [CCPA opt-out](#ccpa-do-not-sell-or-share-opt-out)):
+
+| Method          | Parameters                                                        | Return Type     | Description                                                                 |
+| --------------- | ----------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------- |
+| `setCcpaOptout` | `optedOut: boolean, sync?: { identifier, apiKey, getSignature? }` | `Promise<void>` | Record the user's explicit DNSMPI choice; optionally write it cross-device. |
+| `getCcpaOptout` | —                                                                 | `boolean`       | The stored DNSMPI choice. `false` unless the user opted out.                |
+
 ### ATT Methods (iOS)
 
 | Method                         | Parameters | Return Type          | Description                                          |
@@ -171,7 +178,7 @@ interface UniversalConsentRecord {
   status: string;
   consentPreferences: UniversalConsentPreferences | null;
   consentMode: string | null;
-  ccpaOptout: boolean;
+  ccpaOptout: boolean; // the stored explicit DNSMPI choice, never derived
   platform: string | null;
   policyName: string | null;
   configVersion: string | null;
@@ -397,6 +404,28 @@ Some things the SDK cannot detect:
 - **Logout.** It only knows when you tell it, so call `clearUserIdentifier()` whenever the user logs out.
 - **Who made a pre-login choice.** On a login that finds no record, the SDK writes an explicit choice made on an unbound device, by design, even though an earlier user of a shared device may have made it. There is no shared-device or shared-account heuristic.
 - **Two people sharing one account.**
+
+### CCPA "Do Not Sell or Share" opt-out
+
+`ccpa_optout` on a Universal Consent record means one thing: the user's **explicit** CCPA/CPRA "Do Not Sell or Share My Personal Information" choice. The SDK never derives it from marketing consent, the ad-tracking signal (ATT / Android ad-ID opt-out), GPC or DNT. Neither iOS nor Android has an OS-level do-not-sell signal, so **your app is the source of truth**: call `setCcpaOptout` from your own DNSMPI control.
+
+```tsx
+import { setCcpaOptout, getCcpaOptout } from '@datagrail.io/react-native-consent';
+
+// Local only:
+await setCcpaOptout(true);
+
+// Logged-in user: also write it to their cross-device record.
+await setCcpaOptout(true, { identifier: user.email, apiKey: DG_API_KEY, getSignature });
+
+getCcpaOptout(); // true
+```
+
+- The flag is stored on the device and does not change any category or count as a banner answer.
+- With `sync`, it is written together with the user's current local categories, but only when Universal Consent is enabled, your config's `universalConsent.sync_optout` is on, the device is bound to that identifier (a `setUserIdentifier` call for it succeeded), and the user has made an explicit category choice. Otherwise it stays local and is sent with the next Universal Consent write.
+- `sync_optout` is only the per-customer gate: when it is off, every write sends `ccpa_optout: false`.
+- On a login, a found record's `ccpa_optout` replaces the local flag, like its categories. A setter call on its own does not make a login write a record. `clearUserIdentifier()` returns the flag to `false`; `reset()` wipes it.
+- Records written by older SDK versions may carry a value that was not an explicit choice; they are adopted as they are.
 
 ### How signals are applied
 

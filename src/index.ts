@@ -60,6 +60,8 @@ export {
   rehydrateFromUniversalConsent,
   setUserIdentifier,
   clearUserIdentifier,
+  setCcpaOptout,
+  getCcpaOptout,
 } from './ConsentManager';
 
 export { requestTrackingAuthorization, getTrackingStatus } from './platform/att';

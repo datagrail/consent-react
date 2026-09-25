@@ -18,6 +18,10 @@ export const STORAGE_KEYS = {
   // currently bound to. Written only by setUserIdentifier; cleared by clearUserIdentifier and by
   // reset() (clearAll). Tells a login TRANSITION apart from a re-sync while already logged in.
   BOUND_USER_HASH: 'datagrail_consent_bound_user_hash',
+  // The user's EXPLICIT CCPA/CPRA "Do Not Sell or Share" choice (TRUST-2591). Written only by
+  // setCcpaOptout, by adopting a found Universal Consent record, and cleared to false by
+  // clearUserIdentifier / the neutral reset; wiped by reset() (clearAll). Never derived.
+  CCPA_OPTOUT: 'datagrail_consent_ccpa_optout',
 } as const;
 
 export const CURRENT_SCHEMA_VERSION = 2;
