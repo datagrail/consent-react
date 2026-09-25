@@ -346,7 +346,13 @@ export async function rehydrateFromUniversalConsent(
   apiKey: string,
   trackingSignal: ATTStatus = readTrackingSignal(),
 ): Promise<boolean> {
-  return (await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal)) !== null;
+  const { rawCookieOptions } = await rehydrateReturningRawPreferences(
+    identifier,
+    apiKey,
+    trackingSignal,
+    false,
+  );
+  return rawCookieOptions !== null;
 }
 
 /**
@@ -359,13 +365,22 @@ export async function rehydrateFromUniversalConsent(
  * cross-device record as though the user had chosen it. Returning the raw map lets the write carry
  * what the user actually consented to.
  *
+ * `recordFound` is `true` whenever the server returned a record, even one with no usable consent
+ * choice (`consentPreferences` null or an empty map) — `rawCookieOptions` is `null` in that case,
+ * exactly as on a miss. `setUserIdentifier` needs the distinction on a login.
+ *
+ * `fillFromNeutral` (login only, TRUST-2902): categories the record does not mention take the
+ * neutral value (the config default, essential on) rather than being left out, so no category
+ * reads as the prior user's value or as an implicit `false`.
+ *
  * Internal — the public surface keeps the boolean-returning shape.
  */
 async function rehydrateReturningRawPreferences(
   identifier: string,
   apiKey: string,
   trackingSignal: ATTStatus,
-): Promise<Record<string, boolean> | null> {
+  fillFromNeutral: boolean,
+): Promise<{ recordFound: boolean; rawCookieOptions: Record<string, boolean> | null }> {
   assertUniversalConsentEnabled();
 
   // Goes to the service directly rather than through fetchUniversalConsent, which returns an
@@ -378,16 +393,28 @@ async function rehydrateReturningRawPreferences(
   // nothing in them, and because isCategoryEnabled() defaults an unknown key to false, that
   // reads back as a blanket opt-out the user never made — while also hiding the banner.
   if (!rawCookieOptions || Object.keys(rawCookieOptions).length === 0) {
-    return null;
+    return { recordFound: record !== null, rawCookieOptions: null };
   }
 
   // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
   // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
-  const cookieOptions = reconcileSignals(
+  const essentialKeys = new Set(ConsentResolver.getEssentialCategories(currentConfig!));
+  const reconciled = reconcileSignals(
     rawCookieOptions,
     record!.gpc || signalSuppressesNonEssential(trackingSignal),
-    new Set(ConsentResolver.getEssentialCategories(currentConfig!)),
+    essentialKeys,
   );
+
+  // On a login the record REPLACES local state: start from the neutral defaults (never the prior
+  // local value) and overlay what the record carries. Essential categories stay on.
+  let cookieOptions = reconciled;
+  if (fillFromNeutral) {
+    cookieOptions = {};
+    for (const option of ConsentResolver.getDefaults(currentConfig!).cookieOptions) {
+      cookieOptions[option.gtmKey] = option.isEnabled || essentialKeys.has(option.gtmKey);
+    }
+    Object.assign(cookieOptions, reconciled);
+  }
 
   const preferences: ConsentPreferences = {
     // A record that came back at all represents an answered prompt, so the rehydrated state is
@@ -410,7 +437,7 @@ async function rehydrateReturningRawPreferences(
   storageService!.setUserConsented(true);
 
   eventEmitter.emit(preferences);
-  return rawCookieOptions;
+  return { recordFound: true, rawCookieOptions };
 }
 
 /**
@@ -427,8 +454,12 @@ async function rehydrateReturningRawPreferences(
  * depends on whether this is a LOGIN (the device is unbound, or bound to a different identity) or
  * a RE-SYNC (already bound to this identity, so any local change was made after login):
  *
- * - LOGIN + FOUND record: the record wins. It is adopted into local state and nothing is written,
- *   even if the device holds an explicit pre-login choice — that choice is dropped.
+ * - LOGIN + FOUND record: the record wins. It REPLACES local state — categories it carries take
+ *   its (signal-reconciled) value, every other category takes the config default (essential on),
+ *   never the prior local value — and nothing is written, even if the device holds an explicit
+ *   pre-login choice; that choice is dropped. A found record with no consent choice (signal-only)
+ *   returns local state to neutral if anything explicit or another user's state is stored, and is
+ *   a no-op otherwise; nothing is written either way.
  * - LOGIN + MISS + EXPLICIT local choice: the choice is attached — written as this identity's
  *   first record.
  * - LOGIN + MISS + no explicit choice: nothing is written; config defaults are never seeded as a
@@ -495,8 +526,8 @@ export async function setUserIdentifier(
   // config defaults, and hasUserConsented() is the flag that tells the two apart. State left by a
   // different bound identity is that user's, never an explicit choice for this one.
   const localChoice = storageService!.loadPreferences();
-  const hasExplicitChoice =
-    storageService!.hasUserConsented() && localChoice !== null && !boundToOther;
+  const hadConsentedFlag = storageService!.hasUserConsented();
+  const hasExplicitChoice = hadConsentedFlag && localChoice !== null && !boundToOther;
 
   // Read first. A genuine MISS comes back as `null`. A read FAILURE throws, and MUST propagate:
   // a rich remote record may exist that we simply could not read, and the server never merges — a
@@ -505,7 +536,25 @@ export async function setUserIdentifier(
   // itself would succeed. That is the cross-device corruption class TRUST-2491 fixed on the
   // read-SUCCESS path; do not reopen it through the read-FAILURE branch. Surfacing the error lets
   // the caller retry, which re-reads first. The binding is not touched on this path.
-  const rawFromRecord = await rehydrateReturningRawPreferences(identifier, apiKey, trackingSignal);
+  const { recordFound, rawCookieOptions: rawFromRecord } = await rehydrateReturningRawPreferences(
+    identifier,
+    apiKey,
+    trackingSignal,
+    // A login REPLACES local state with the record; a re-sync keeps today's adopt behavior.
+    !isResync,
+  );
+
+  if (rawFromRecord === null && recordFound && !isResync) {
+    // LOGIN + FOUND record with no consent choice (signal-only / empty preferences). There is
+    // nothing to adopt, but the record's existence means the device's own state must not be
+    // attached either: drop it to neutral if anything explicit or another user's state is stored
+    // (no-op, and no listener, when local is already neutral). Never a write.
+    if (hadConsentedFlag || boundToOther) {
+      returnToNeutral();
+    }
+    storageService!.saveBoundUserHash(userHash);
+    return;
+  }
 
   if (rawFromRecord !== null) {
     // FOUND: the rehydrate above already adopted the record into local state. On a LOGIN the

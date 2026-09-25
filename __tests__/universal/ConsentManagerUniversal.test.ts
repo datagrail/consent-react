@@ -846,6 +846,103 @@ describe('ConsentManager — Universal Consent', () => {
       expect(boundHash()).toBe(USER_HASH);
     });
 
+    it('login + subset record REPLACES local: an unmentioned category takes its config default', async () => {
+      mockFetchSequence(bannerConfigJson, response(200, ''));
+      await initUniversal();
+      const defaults = persistedMap();
+      // An explicit local choice that differs from the default on performance, which the record
+      // below does not mention.
+      expect(defaults['dg-category-performance']).toBe(true);
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: true },
+          { gtmKey: 'dg-category-performance', isEnabled: false },
+          { gtmKey: 'dg-category-functional', isEnabled: false },
+        ],
+      });
+      const fetchMock = stubUcFetch(
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+          },
+        }),
+      );
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      // Record-carried category: the record's value.
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      // Unmentioned categories: the config default, not the prior local value.
+      expect(isCategoryEnabled('dg-category-performance')).toBe(
+        defaults['dg-category-performance'],
+      );
+      expect(isCategoryEnabled('dg-category-functional')).toBe(defaults['dg-category-functional']);
+      expect(persistedMap()).toEqual({ ...defaults, 'dg-category-marketing': false });
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + found record with no consent choice + explicit local: neutral, no POST', async () => {
+      const neutral = await initWithExplicitChoice();
+      const fetchMock = stubUcFetch(found({ consent_preferences: null }));
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(persistedMap()).toEqual(neutral);
+      expect(hasUserConsent()).toBe(false);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + found record with no consent choice + neutral local: no-op, no listener, no POST', async () => {
+      const fetchMock = mockFetchSequence(
+        bannerConfigJson,
+        found({ consent_preferences: { isCustomised: true, cookieOptions: {} } }),
+      );
+      await initUniversal();
+      const before = getPreferences();
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(getPreferences()).toEqual(before);
+      expect(listener).not.toHaveBeenCalled();
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it("re-sync + subset record keeps today's adopt (no neutral fill)", async () => {
+      mockFetchSequence(
+        universalConfigJson,
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+          },
+        }),
+      );
+      await initUniversal();
+      bindDeviceTo(USER_HASH);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(persistedMap()).toEqual({
+        'dg-category-essential': true,
+        'dg-category-marketing': false,
+      });
+    });
+
     it('login + record exists + no local choice: no POST, record adopted, bound', async () => {
       const fetchMock = mockFetchSequence(
         universalConfigJson,
