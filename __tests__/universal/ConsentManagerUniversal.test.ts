@@ -195,6 +195,63 @@ describe('ConsentManager — Universal Consent', () => {
     });
   });
 
+  // TRUST-2603: the edge API key can be delivered via config.json so it rotates server-side with
+  // no client release. An explicit param still wins; otherwise the SDK falls back to the config
+  // value; with neither present the call fails fast.
+  describe('API key delivery via config.json (TRUST-2603)', () => {
+    /** Universal config carrying (or omitting) universalConsent.apiKey. */
+    const configWithApiKey = (apiKey?: string) => {
+      const parsed = JSON.parse(universalConfigJson);
+      return JSON.stringify({
+        ...parsed,
+        universalConsent: {
+          ...parsed.universalConsent,
+          ...(apiKey ? { apiKey } : {}),
+        },
+      });
+    };
+
+    const apiKeyHeaderOf = (call: unknown[]) =>
+      (call[1] as { headers: Record<string, string> }).headers['X-DG-Api-Key'];
+
+    it('falls back to universalConsent.apiKey from config when none is passed', async () => {
+      const mock = mockFetchSequence(configWithApiKey('config-key'), notFound());
+      await initUniversal();
+
+      await expect(fetchUniversalConsent('user@example.com')).resolves.toBeNull();
+      // calls[0] is the config fetch; calls[1] is the GET to /universal_consent.
+      expect(apiKeyHeaderOf(mock.mock.calls[1])).toBe('config-key');
+    });
+
+    it('prefers an explicit apiKey over the config value', async () => {
+      const mock = mockFetchSequence(configWithApiKey('config-key'), notFound());
+      await initUniversal();
+
+      await expect(fetchUniversalConsent('user@example.com', 'explicit-key')).resolves.toBeNull();
+      expect(apiKeyHeaderOf(mock.mock.calls[1])).toBe('explicit-key');
+    });
+
+    it('setUserIdentifier uses the config key when the host omits it', async () => {
+      const mock = mockFetchSequence(configWithApiKey('config-key'), notFound());
+      await initUniversal();
+
+      await setUserIdentifier('user@example.com', { getSignature });
+      expect(apiKeyHeaderOf(mock.mock.calls[1])).toBe('config-key');
+    });
+
+    it('throws VALIDATION_ERROR when neither an explicit key nor a config key is present', async () => {
+      mockFetchSequence(configWithApiKey(undefined));
+      await initUniversal();
+
+      await expect(fetchUniversalConsent('user@example.com')).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+      await expect(setUserIdentifier('user@example.com', { getSignature })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+    });
+  });
+
   describe('fetchUniversalConsent', () => {
     it('returns the record without touching local state', async () => {
       mockFetchSequence(universalConfigJson, found());

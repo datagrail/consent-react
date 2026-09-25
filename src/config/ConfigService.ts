@@ -134,6 +134,9 @@ export class ConfigService {
       config.universalConsent = {
         enabled: parsed.universalConsent.enabled ?? false,
         syncOptout: parsed.universalConsent.sync_optout ?? false,
+        // Only set when present, to match the exactOptionalPropertyTypes-friendly pattern above:
+        // an assigned `undefined` would differ from the omission for strict consumers (TRUST-2603).
+        ...(parsed.universalConsent.apiKey ? { apiKey: parsed.universalConsent.apiKey } : {}),
       };
     }
 
