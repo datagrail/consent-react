@@ -145,7 +145,7 @@ export async function savePreferences(prefs: ConsentPreferences): Promise<void> 
   const consentId = storageService!.getOrCreateUniqueId();
   const timestamp = new Date().toISOString();
   const body = JSON.stringify({
-    dg_customer_id: currentConfig!.dgCustomerId,
+    customer: currentConfig!.dgCustomerId,
     consent_id: consentId,
     config_version: currentConfig!.version,
     is_customised: prefs.isCustomised,
@@ -478,7 +478,6 @@ export async function trackBannerShown(): Promise<void> {
   const timestamp = new Date().toISOString();
   const params = new URLSearchParams({
     customer: currentConfig!.dgCustomerId,
-    dg_customer_id: currentConfig!.dgCustomerId,
     consent_id: consentId,
     config_version: currentConfig!.version,
     timestamp,
