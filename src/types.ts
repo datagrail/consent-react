@@ -52,6 +52,12 @@ export interface UniversalConsentConfig {
    * record. NOT the opt-out value itself; when off, every write sends `ccpa_optout: false`.
    */
   syncOptout: boolean;
+  /**
+   * Edge API key delivered via config.json (TRUST-2603) so it can rotate server-side (edge KVS +
+   * config republish) with no client release. Optional: a host may still pass the key explicitly
+   * to the Universal Consent calls, which takes precedence over this value.
+   */
+  apiKey?: string;
 }
 
 export type ConsentMode = 'optin' | 'optout' | 'informational';

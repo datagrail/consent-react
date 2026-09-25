@@ -302,7 +302,7 @@ export async function setCcpaOptout(
   optedOut: boolean,
   sync?: {
     identifier: string;
-    apiKey: string;
+    apiKey?: string;
     getSignature?: SignatureProvider;
   },
 ): Promise<void> {
@@ -327,11 +327,14 @@ export async function setCcpaOptout(
     return;
   }
 
+  // TRUST-2603: explicit key wins, else fall back to the config value; fail fast if neither.
+  const apiKey = resolveUniversalConsentApiKey(sync.apiKey);
+
   await universalConsentService!.save(
     currentConfig!,
     sync.identifier,
     { isCustomised: localChoice.isCustomised, cookieOptions: toRawCookieMap(localChoice) },
-    sync.apiKey,
+    apiKey,
     optedOut,
     sync.getSignature,
   );
@@ -363,6 +366,24 @@ function assertUniversalConsentEnabled(): void {
 }
 
 /**
+ * Resolve the edge API key for a Universal Consent call (TRUST-2603). An explicit value passed by
+ * the host wins (existing integrations behave exactly as before); otherwise fall back to
+ * `universalConsent.apiKey` from config.json, which lets the key rotate server-side with no client
+ * release. Throws a VALIDATION_ERROR when neither is present. Call only after the enabled check, so
+ * `currentConfig` is loaded.
+ */
+function resolveUniversalConsentApiKey(explicit?: string): string {
+  const apiKey = explicit ?? currentConfig?.universalConsent?.apiKey;
+  if (!apiKey) {
+    throw new ConsentError(
+      'VALIDATION_ERROR',
+      'A Universal Consent API key is required: pass it explicitly or set universalConsent.apiKey in config.json',
+    );
+  }
+  return apiKey;
+}
+
+/**
  * Fetch a user's stored Universal Consent record without changing local state.
  *
  * The returned record has signals already reconciled on-device: when an opt-out signal applies,
@@ -376,12 +397,13 @@ function assertUniversalConsentEnabled(): void {
  */
 export async function fetchUniversalConsent(
   identifier: string,
-  apiKey: string,
+  apiKey?: string,
   trackingSignal: ATTStatus = readTrackingSignal(),
 ): Promise<UniversalConsentRecord | null> {
   assertUniversalConsentEnabled();
+  const resolvedApiKey = resolveUniversalConsentApiKey(apiKey);
 
-  const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
+  const record = await universalConsentService!.get(currentConfig!, identifier, resolvedApiKey);
   if (record === null) {
     return null;
   }
@@ -422,12 +444,14 @@ export async function fetchUniversalConsent(
  */
 export async function rehydrateFromUniversalConsent(
   identifier: string,
-  apiKey: string,
+  apiKey?: string,
   trackingSignal: ATTStatus = readTrackingSignal(),
 ): Promise<boolean> {
+  assertUniversalConsentEnabled();
+  const resolvedApiKey = resolveUniversalConsentApiKey(apiKey);
   const { rawCookieOptions } = await rehydrateReturningRawPreferences(
     identifier,
-    apiKey,
+    resolvedApiKey,
     trackingSignal,
     false,
   );
@@ -614,14 +638,17 @@ async function rehydrateReturningRawPreferences(
 export async function setUserIdentifier(
   identifier: string,
   options: {
-    apiKey: string;
+    apiKey?: string;
     getSignature?: SignatureProvider;
     trackingSignal?: ATTStatus;
-  },
+  } = {},
 ): Promise<void> {
   assertUniversalConsentEnabled();
 
-  const { apiKey, getSignature } = options;
+  // TRUST-2603: an explicit apiKey wins; otherwise fall back to the config value. Fail fast here,
+  // before any read/write and before the binding is touched, if neither is present.
+  const apiKey = resolveUniversalConsentApiKey(options.apiKey);
+  const { getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
 
   // Hash first: a VALIDATION_ERROR / NATIVE_ERROR fails fast here with no read, no write and no
