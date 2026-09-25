@@ -483,15 +483,33 @@ describe('ConsentManager — Universal Consent', () => {
       expect(needsConsent()).toBe(true);
     });
 
-    it('writes nothing when the stored cookie options map is empty', async () => {
-      // An empty map carries no category state. Saving it would read back as a blanket opt-out
-      // (isCategoryEnabled defaults unknown keys to false) while also hiding the banner.
+    it('rehydrates a present but empty cookie options map as an answered essential-only choice', async () => {
+      // TRUST-2961: a PRESENT consent_preferences block whose cookieOptions map is empty is an
+      // answered essential-only choice — the user accepted only always-on categories. It must
+      // rehydrate and suppress the banner, exactly as iOS and web already do. Collapsing it into a
+      // "no choice" miss would re-prompt a user who already answered elsewhere.
       const bannerConfig = JSON.parse(universalConfigJson);
       bannerConfig.showBanner = true;
       mockFetchSequence(
         JSON.stringify(bannerConfig),
         found({ consent_preferences: { isCustomised: true, cookieOptions: {} } }),
       );
+      await initUniversal();
+
+      await expect(rehydrateFromUniversalConsent('user@example.com', API_KEY)).resolves.toBe(true);
+
+      // The answered choice is persisted, so the banner does not re-prompt.
+      expect(hasUserConsent()).toBe(true);
+      expect(needsConsent()).toBe(false);
+    });
+
+    it('writes nothing when a found record has absent consent preferences (signal-only)', async () => {
+      // The TRUST-2961 boundary: an ABSENT consent_preferences block (null, not an empty map) is
+      // signal-only — the user made no choice. This is the only "no choice" shape and stays a miss:
+      // nothing persists and the banner keeps showing to collect the answer.
+      const bannerConfig = JSON.parse(universalConfigJson);
+      bannerConfig.showBanner = true;
+      mockFetchSequence(JSON.stringify(bannerConfig), found({ consent_preferences: null }));
       await initUniversal();
 
       await expect(rehydrateFromUniversalConsent('user@example.com', API_KEY)).resolves.toBe(false);
@@ -964,21 +982,28 @@ describe('ConsentManager — Universal Consent', () => {
       expect(boundHash()).toBe(USER_HASH);
     });
 
-    it('login + found record with no consent choice + neutral local: no-op, no listener, no POST', async () => {
+    it('login + present but empty found record: adopted as an answered choice, no POST', async () => {
+      // TRUST-2961: a PRESENT consent_preferences block with an empty cookieOptions map is an
+      // ANSWERED choice on a login, not a no-choice miss. It is ADOPTED (local state replaced, the
+      // listener fired, the banner suppressed) rather than left neutral — only an ABSENT block is
+      // signal-only. No POST: the record wins as-is. Aligns Android/RN with iOS and web.
       const fetchMock = mockFetchSequence(
         bannerConfigJson,
         found({ consent_preferences: { isCustomised: true, cookieOptions: {} } }),
       );
       await initUniversal();
-      const before = getPreferences();
       const listener = jest.fn();
       onConsentChanged(listener);
 
       await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
 
+      // The record wins as-is: adopted locally, never posted.
       expect(ucPosts(fetchMock)).toHaveLength(0);
-      expect(getPreferences()).toEqual(before);
-      expect(listener).not.toHaveBeenCalled();
+      expect(getPreferences()?.isCustomised).toBe(true);
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      // The answered choice is persisted, so the banner does not re-prompt, and the listener fires.
+      expect(hasUserConsent()).toBe(true);
+      expect(listener).toHaveBeenCalledTimes(1);
       expect(boundHash()).toBe(USER_HASH);
     });
 
