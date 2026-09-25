@@ -59,13 +59,28 @@ export class StorageService {
   }
 
   /**
-   * Remove the explicit consent choice (stored preferences + the user-consented flag) so reads fall
-   * back to the config defaults, as on a fresh install. Leaves the unique id, config version,
-   * config cache, pending queue and identity binding in place.
+   * Remove the explicit consent choice (stored preferences, the user-consented flag and the CCPA
+   * opt-out flag) so reads fall back to the config defaults, as on a fresh install. Leaves the
+   * unique id, config version, config cache, pending queue and identity binding in place.
    */
   clearUserChoice(): void {
     this.storage.delete(STORAGE_KEYS.PREFERENCES);
     this.storage.delete(STORAGE_KEYS.USER_CONSENTED);
+    this.clearCcpaOptout();
+  }
+
+  /** Persist the user's explicit CCPA "Do Not Sell or Share" choice. */
+  saveCcpaOptout(optedOut: boolean): void {
+    this.storage.set(STORAGE_KEYS.CCPA_OPTOUT, optedOut);
+  }
+
+  /** The stored CCPA opt-out choice; `false` ("not opted out") when none is stored. */
+  loadCcpaOptout(): boolean {
+    return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT) ?? false;
+  }
+
+  clearCcpaOptout(): void {
+    this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT);
   }
 
   saveBoundUserHash(userHash: string): void {

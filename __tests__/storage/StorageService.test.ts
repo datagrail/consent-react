@@ -181,6 +181,26 @@ describe('StorageService', () => {
     });
   });
 
+  describe('ccpa opt-out', () => {
+    it('defaults to false, persists and clears', () => {
+      expect(storage.loadCcpaOptout()).toBe(false);
+      storage.saveCcpaOptout(true);
+      expect(storage.loadCcpaOptout()).toBe(true);
+      storage.clearCcpaOptout();
+      expect(storage.loadCcpaOptout()).toBe(false);
+    });
+
+    it('is wiped by clearAll and cleared by clearUserChoice', () => {
+      storage.saveCcpaOptout(true);
+      storage.clearAll();
+      expect(storage.loadCcpaOptout()).toBe(false);
+
+      storage.saveCcpaOptout(true);
+      storage.clearUserChoice();
+      expect(storage.loadCcpaOptout()).toBe(false);
+    });
+  });
+
   describe('clearUserChoice', () => {
     it('removes preferences and the consented flag, keeping everything else', () => {
       storage.savePreferences({ isCustomised: true, cookieOptions: [] });

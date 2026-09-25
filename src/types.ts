@@ -47,7 +47,10 @@ export interface ConsentConfig {
 export interface UniversalConsentConfig {
   /** Whether cross-device Universal Consent is turned on for this container. */
   enabled: boolean;
-  /** Whether CCPA/US opt-out state should be synced to the universal record. */
+  /**
+   * Feature gate: whether the user's CCPA opt-out (`setCcpaOptout`) is written to the universal
+   * record. NOT the opt-out value itself; when off, every write sends `ccpa_optout: false`.
+   */
   syncOptout: boolean;
 }
 

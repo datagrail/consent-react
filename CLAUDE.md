@@ -106,6 +106,8 @@ Universal Consent (cross-device), gated on `universalConsent.enabled` in the con
 - `rehydrateFromUniversalConsent(identifier, apiKey, trackingSignal?): Promise<boolean>` — fetch **and apply**; `false` on a miss
 - `setUserIdentifier(identifier, { apiKey, getSignature, trackingSignal? }): Promise<void>` — reads then (maybe) writes; binds the device to the user hash on success
 - `clearUserIdentifier(): void` — logout: clears the binding and returns local consent to neutral (non-destructive, no network; unlike `reset()`)
+- `setCcpaOptout(optedOut, sync?: { identifier, apiKey, getSignature? }): Promise<void>` — persist the explicit DNSMPI choice; writes through only when UC on + `syncOptout` + bound to `identifier` + explicit category choice (TRUST-2591)
+- `getCcpaOptout(): boolean` — the stored flag (RN has no other source)
 
 Also exported: `requestTrackingAuthorization`/`getTrackingStatus` (ATT, `src/platform/att*.ts`),
 `getConsentPayloadForWebView`/`getConsentInjectionScript` (`src/webview/WebViewConsent.ts`), and
@@ -147,9 +149,16 @@ backend. Do not change any of these without changing all of them:
 - **Signals suppress on top, one-directionally.** A signal may only turn categories OFF, never on.
   Two apply: the record's stored `gpc` (recorded on the web — RN has no GPC of its own, so this
   field is the only path) and the device's live ad-tracking signal. The more protective wins.
-- **`ccpa_optout` is never derived from the tracking signal.** Ad-tracking permission is narrower
-  than a CCPA do-not-sell choice; RN has no source for it and writes `false`, matching iOS/Android.
-  `universalConsent.syncOptout` is a feature gate, not the value.
+- **`ccpa_optout` = the user's EXPLICIT CCPA/CPRA "Do Not Sell or Share" choice (TRUST-2591).**
+  Never derived from marketing consent, GPC, DNT, ATT or the tracking signal, in the write or in
+  local state. Mobile source of truth is the host app calling `setCcpaOptout` (no native DNSMPI
+  signal; do not read the deprecated IAB `IABUSPrivacy_String`). Stored as `CCPA_OPTOUT`
+  (`datagrail_consent_ccpa_optout`), default false; written only by the setter and by adopting a
+  found record (login replace / rehydrate); cleared by `clearUserIdentifier` / neutral reset,
+  wiped by `reset()`. Wire value = `syncOptout === true && localFlag` — always the RAW local flag.
+  `universalConsent.syncOptout` is a feature gate, not the value. A setter-only change is not an
+  explicit category choice and never makes a login miss write. It never touches categories or
+  fires the listener.
 - **`NetworkService` resolves on any HTTP status** (it only rejects on transport failure), so
   `UniversalConsentService` checks non-2xx itself. Without that, a 500's error body would be parsed
   as a consent record.
