@@ -1329,6 +1329,27 @@ describe('ConsentManager — Universal Consent', () => {
         expect(postBody(posts[0]).ccpa_optout).toBe(true);
         expect(getCcpaOptout()).toBe(true);
       });
+
+      it('re-sync adopt takes the record value when the gate is on', async () => {
+        const fetchMock = await initThenStub(configWithGate(true), found({ ccpa_optout: true }));
+        bindDeviceTo(USER_HASH);
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(true);
+      });
+
+      it('re-sync adopt keeps a local-only flag when the gate is off', async () => {
+        const fetchMock = await initThenStub(configWithGate(false), found({ ccpa_optout: false }));
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true);
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(true);
+      });
     });
 
     describe('login (TRUST-2902 rule)', () => {

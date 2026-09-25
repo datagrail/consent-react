@@ -531,7 +531,12 @@ async function rehydrateReturningRawPreferences(
   storageService!.setUserConsented(true);
   // The record's stored CCPA opt-out replaces the local flag along with the categories (an absent
   // field decodes to false). Not derived from anything: it is the user's recorded DNSMPI choice.
-  storageService!.saveCcpaOptout(record!.ccpaOptout);
+  // Outside a login, adopt it only with the syncOptout gate on: with the gate off the SDK never
+  // puts the choice on the record (it always says false), so adopting it would erase a local-only
+  // setCcpaOptout(true) on every re-sync. Same rule as the web/iOS/Android SDKs.
+  if (fillFromNeutral || currentConfig!.universalConsent?.syncOptout === true) {
+    storageService!.saveCcpaOptout(record!.ccpaOptout);
+  }
 
   eventEmitter.emit(preferences);
   return { recordFound: true, rawCookieOptions, recordCcpaOptout: record!.ccpaOptout };
