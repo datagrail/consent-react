@@ -325,7 +325,6 @@ export async function setCcpaOptout(
     return;
   }
 
-  // TRUST-2603: explicit key wins, else fall back to the config value; fail fast if neither.
   const apiKey = resolveUniversalConsentApiKey(sync.apiKey);
 
   const rawMap: Record<string, boolean> = {};
@@ -642,8 +641,6 @@ export async function setUserIdentifier(
 ): Promise<void> {
   assertUniversalConsentEnabled();
 
-  // TRUST-2603: an explicit apiKey wins; otherwise fall back to the config value. Fail fast here,
-  // before any read/write and before the binding is touched, if neither is present.
   const apiKey = resolveUniversalConsentApiKey(options.apiKey);
   const { getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
