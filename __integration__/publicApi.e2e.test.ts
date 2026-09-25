@@ -296,18 +296,21 @@ describe('Public API — end to end', () => {
     it('reads then writes on setUserIdentifier, signing only the write', async () => {
       const fetchMock = mockFetchSequence(
         universalConfigJson,
+        '', // the acceptAll save_preferences POST
         JSON.stringify({ status: 'not_found' }),
         '',
       );
       await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+      // An explicit local choice: only that is attached to a login that finds no record.
+      await acceptAll();
 
       await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
 
-      const [readUrl, readInit] = fetchMock.mock.calls[1] as [
+      const [readUrl, readInit] = fetchMock.mock.calls[2] as [
         string,
         { method: string; headers: Record<string, string> },
       ];
-      const [writeUrl, writeInit] = fetchMock.mock.calls[2] as [
+      const [writeUrl, writeInit] = fetchMock.mock.calls[3] as [
         string,
         { method: string; headers: Record<string, string>; body: string },
       ];

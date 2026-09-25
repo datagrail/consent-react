@@ -90,13 +90,13 @@ const unsubscribe = onConsentChanged((preferences) => {
 
 Cross-device consent. Available when `universalConsent.enabled` is set on your DataGrail config; otherwise these throw a `ConsentError`.
 
-| Method                          | Parameters                                                                                        | Return Type                               | Description                                                              |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `isUniversalConsentEnabled`     | —                                                                                                 | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
-| `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`                                  | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
-| `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`                                  | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
-| `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal?, attachAnonymousConsent? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
-| `clearUserIdentifier`           | —                                                                                                 | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
+| Method                          | Parameters                                                               | Return Type                               | Description                                                              |
+| ------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------ |
+| `isUniversalConsentEnabled`     | —                                                                        | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
+| `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
+| `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
+| `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
+| `clearUserIdentifier`           | —                                                                        | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
 
 ### ATT Methods (iOS)
 
@@ -384,13 +384,19 @@ This returns the device to neutral: the stored choice is removed, reads return y
 
 ### Shared devices and pre-login choices
 
-The SDK remembers which identity the device is bound to (by hash only). If a choice was made on the device before login and the user logging in has **no** stored record, that choice is **not** written to their record by default. The SDK can't tell whether the person logging in made it or an earlier user of the same device did. Instead, local consent goes back to the default and the banner collects this user's own choice. Once the device is bound, later `setUserIdentifier` calls for the same user sync local choices as usual. A stored record found for the user is applied as described below, whatever the device was bound to.
+The SDK remembers which identity the device is bound to (by hash only). A `setUserIdentifier` call for a different identity than the bound one, or on an unbound device, is a **login**:
+
+- **The user has a stored record:** the record wins. It is applied locally and nothing is written, even if a choice was made on the device before login. That pre-login choice is dropped.
+- **No stored record, and the user made an explicit choice on this device** (banner, `savePreferences`, `acceptAll`, `rejectAll`) while it was not bound to someone else: the choice is written as the user's first record.
+- **No stored record and no explicit choice:** nothing is written. Config defaults are never saved as a choice, and local consent stays as it is. If the device was still bound to a different user, local consent returns to the default so that user's state does not carry over.
+
+Once the device is bound, later `setUserIdentifier` calls for the same user are a **re-sync**. A local change is written through over a stored record as before, and a missing record gets the explicit local choice. With no explicit choice nothing is written.
 
 Some things the SDK cannot detect:
 
 - **Logout.** It only knows when you tell it, so call `clearUserIdentifier()` whenever the user logs out.
-- **Who made a pre-login choice.** There is no shared-device or shared-account heuristic. If your app knows the choice and the login happened in the same session, pass `attachAnonymousConsent: true` to `setUserIdentifier` and the choice is written to the new record.
-- **Two people sharing one account.** When a found record conflicts with a local choice, that is handled separately (TRUST-2592) and this does not change it.
+- **Who made a pre-login choice.** On a login that finds no record, the SDK writes an explicit choice made on an unbound device, by design, even though an earlier user of a shared device may have made it. There is no shared-device or shared-account heuristic.
+- **Two people sharing one account.**
 
 ### How signals are applied
 
