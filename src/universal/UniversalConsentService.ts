@@ -186,10 +186,10 @@ export class UniversalConsentService {
    * With no `getSignature` provided, the SDK falls back to a limited, API-key-only write: just
    * `X-DG-Api-Key`, no signature/timestamp/nonce headers.
    *
-   * @param ccpaOptout the user's CCPA/US do-not-sell choice, only written when the
-   *   `universalConsent.syncOptout` flag is enabled. NOT derived from the device's ad-tracking
-   *   signal — that signal is narrower than a do-not-sell choice, so React Native has no source
-   *   for this value and passes `false`, matching iOS and Android.
+   * @param ccpaOptout the user's RAW local CCPA "Do Not Sell or Share" flag (set by
+   *   `setCcpaOptout` or adopted from a record). Written as `true` only when the
+   *   `universalConsent.syncOptout` gate is also on. Never derived from marketing consent or the
+   *   device's ad-tracking signal — that signal is narrower than a do-not-sell choice.
    */
   async save(
     config: ConsentConfig,
@@ -240,7 +240,7 @@ export class UniversalConsentService {
         cookieOptions: preferences.cookieOptions,
       },
       consent_mode: config.consentMode,
-      // syncOptout is a feature gate, NOT the opt-out value itself.
+      // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591).
       ccpa_optout: config.universalConsent?.syncOptout === true && ccpaOptout,
       platform: PLATFORM,
       policy_name: config.consentPolicy.name,
