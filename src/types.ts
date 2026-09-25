@@ -219,6 +219,12 @@ export type ConsentErrorCode =
   | 'NOT_INITIALIZED'
   | 'INVALID_CONFIGURATION'
   | 'NETWORK_ERROR'
+  /**
+   * The config endpoint answered with a 4xx: the configUrl is wrong, or no config is
+   * published there. Retrying will not help. Distinct from NETWORK_ERROR, which covers
+   * transport failures and 5xx responses that remained after retries.
+   */
+  | 'CONFIG_NOT_PUBLISHED'
   | 'PARSE_ERROR'
   | 'STORAGE_ERROR'
   | 'TIMEOUT'

@@ -20,10 +20,7 @@ import { __resetAllStores } from 'react-native-mmkv';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const testConfigJson = fs.readFileSync(
-  path.join(__dirname, 'fixtures/test-config.json'),
-  'utf-8',
-);
+const testConfigJson = fs.readFileSync(path.join(__dirname, 'fixtures/test-config.json'), 'utf-8');
 
 function mockFetchSuccess(data: string = testConfigJson) {
   const mockHeaders = new Map<string, string>();
@@ -31,8 +28,7 @@ function mockFetchSuccess(data: string = testConfigJson) {
     status: 200,
     text: () => Promise.resolve(data),
     headers: {
-      forEach: (cb: (v: string, k: string) => void) =>
-        mockHeaders.forEach((v, k) => cb(v, k)),
+      forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
     },
   });
 }
@@ -54,9 +50,9 @@ describe('ConsentManager', () => {
 
   describe('initialize', () => {
     it('should throw on missing configUrl', async () => {
-      await expect(
-        initialize({ configUrl: '' }),
-      ).rejects.toMatchObject({ code: 'INVALID_CONFIGURATION' });
+      await expect(initialize({ configUrl: '' })).rejects.toMatchObject({
+        code: 'INVALID_CONFIGURATION',
+      });
     });
 
     it('should throw on non-HTTPS configUrl', async () => {
@@ -80,6 +76,19 @@ describe('ConsentManager', () => {
       await expect(
         initialize({ configUrl: 'https://cdn.example.com/config.json' }),
       ).rejects.toThrow();
+    });
+
+    it('should reject with CONFIG_NOT_PUBLISHED when the config URL returns 404 and there is no cache', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 404,
+        text: () => Promise.resolve('Not Found'),
+        headers: { forEach: () => {} },
+      });
+
+      await expect(
+        initialize({ configUrl: 'https://cdn.example.com/config.json' }),
+      ).rejects.toMatchObject({ code: 'CONFIG_NOT_PUBLISHED' });
+      expect(() => needsConsent()).toThrow(expect.objectContaining({ code: 'NOT_INITIALIZED' }));
     });
   });
 
@@ -119,7 +128,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await savePreferences({
@@ -239,7 +250,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await savePreferences({
@@ -280,7 +293,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await acceptAll();
@@ -300,18 +315,16 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await rejectAll();
 
       const prefs = getPreferences()!;
-      const essential = prefs.cookieOptions.find(
-        (opt) => opt.gtmKey === 'dg-category-essential',
-      );
-      const marketing = prefs.cookieOptions.find(
-        (opt) => opt.gtmKey === 'dg-category-marketing',
-      );
+      const essential = prefs.cookieOptions.find((opt) => opt.gtmKey === 'dg-category-essential');
+      const marketing = prefs.cookieOptions.find((opt) => opt.gtmKey === 'dg-category-marketing');
 
       expect(essential?.isEnabled).toBe(true);
       expect(marketing?.isEnabled).toBe(false);
@@ -371,7 +384,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await savePreferences({
@@ -414,7 +429,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await trackBannerShown();

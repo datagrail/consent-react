@@ -70,6 +70,18 @@ export class ConfigService {
       }),
     );
 
+    // Same rule as the mobile SDKs' isClientError: 408/429 are transient, not "not published".
+    if (
+      response.status >= 400 &&
+      response.status < 500 &&
+      response.status !== 408 &&
+      response.status !== 429
+    ) {
+      throw new ConsentError(
+        'CONFIG_NOT_PUBLISHED',
+        `Config not published at ${configUrl} (status ${response.status})`,
+      );
+    }
     if (response.status < 200 || response.status >= 300) {
       throw new ConsentError('NETWORK_ERROR', `Config fetch failed with status ${response.status}`);
     }
