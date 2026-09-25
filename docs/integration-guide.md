@@ -81,7 +81,7 @@ function App() {
 }
 ```
 
-> **Important:** All other SDK methods throw `ConsentError` with code `NOT_INITIALIZED` if called before `initialize()` resolves. If `initialize()` rejects (for example with `CONFIG_NOT_PUBLISHED` when the config URL returns a 4xx on a fresh install), call no SDK method other than `initialize()` until a later call succeeds.
+> **Important:** All other SDK methods throw `ConsentError` with code `NOT_INITIALIZED` if called before `initialize()` resolves. If `initialize()` rejects (for example with `CONFIG_NOT_PUBLISHED` when the config URL returns a definite 4xx — any 4xx other than the transient 408/429 — on a fresh install), call no SDK method other than `initialize()` until a later call succeeds.
 
 ## 5. Show the Consent Banner
 

@@ -220,9 +220,10 @@ export type ConsentErrorCode =
   | 'INVALID_CONFIGURATION'
   | 'NETWORK_ERROR'
   /**
-   * The config endpoint answered with a 4xx: the configUrl is wrong, or no config is
-   * published there. Retrying will not help. Distinct from NETWORK_ERROR, which covers
-   * transport failures and 5xx responses that remained after retries.
+   * The config endpoint answered with a definite 4xx (any 4xx other than 408 or 429): the
+   * configUrl is wrong, or no config is published there. Retrying will not help. Distinct from
+   * NETWORK_ERROR, which covers transport failures, 5xx, and the transient 408/429 responses
+   * that remained after retries.
    */
   | 'CONFIG_NOT_PUBLISHED'
   | 'PARSE_ERROR'

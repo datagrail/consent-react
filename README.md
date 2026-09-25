@@ -417,7 +417,7 @@ If no `trackingDescription` is provided, a default message is used. Run `npx exp
 
 The SDK is designed for unreliable network conditions:
 
-- **Config caching** — The last successfully fetched config is cached in MMKV. If a later fetch fails, the SDK keeps serving the cached copy. On a fresh install (or after `reset()`) there is no cache, so a failed fetch rejects `initialize()` with a `ConsentError`: `CONFIG_NOT_PUBLISHED` when the config URL returns a 4xx, `NETWORK_ERROR` or `TIMEOUT` for connectivity and 5xx failures.
+- **Config caching** — The last successfully fetched config is cached in MMKV. If a later fetch fails, the SDK keeps serving the cached copy. On a fresh install (or after `reset()`) there is no cache, so a failed fetch rejects `initialize()` with a `ConsentError`: `CONFIG_NOT_PUBLISHED` when the config URL returns a definite 4xx (any 4xx other than 408 or 429), `NETWORK_ERROR` or `TIMEOUT` for connectivity, 5xx, and the transient 408/429 responses.
 - **Offline queue** — When `savePreferences`, `acceptAll`, or `rejectAll` cannot reach the backend, the request is queued in persistent storage.
 - **Exponential backoff** — Queued requests are retried with exponential backoff when connectivity returns.
 - **Manual retry** — Call `retryPendingRequests()` to explicitly drain the offline queue (e.g., when your app detects connectivity restored).
