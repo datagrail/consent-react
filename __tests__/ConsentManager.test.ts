@@ -20,10 +20,7 @@ import { __resetAllStores } from 'react-native-mmkv';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const testConfigJson = fs.readFileSync(
-  path.join(__dirname, 'fixtures/test-config.json'),
-  'utf-8',
-);
+const testConfigJson = fs.readFileSync(path.join(__dirname, 'fixtures/test-config.json'), 'utf-8');
 
 function mockFetchSuccess(data: string = testConfigJson) {
   const mockHeaders = new Map<string, string>();
@@ -31,8 +28,7 @@ function mockFetchSuccess(data: string = testConfigJson) {
     status: 200,
     text: () => Promise.resolve(data),
     headers: {
-      forEach: (cb: (v: string, k: string) => void) =>
-        mockHeaders.forEach((v, k) => cb(v, k)),
+      forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
     },
   });
 }
@@ -54,9 +50,9 @@ describe('ConsentManager', () => {
 
   describe('initialize', () => {
     it('should throw on missing configUrl', async () => {
-      await expect(
-        initialize({ configUrl: '' }),
-      ).rejects.toMatchObject({ code: 'INVALID_CONFIGURATION' });
+      await expect(initialize({ configUrl: '' })).rejects.toMatchObject({
+        code: 'INVALID_CONFIGURATION',
+      });
     });
 
     it('should throw on non-HTTPS configUrl', async () => {
@@ -119,7 +115,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await savePreferences({
@@ -239,7 +237,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await savePreferences({
@@ -251,6 +251,11 @@ describe('ConsentManager', () => {
         'https://api.consentjs.datagrailstaging.com/save_preferences',
         expect.objectContaining({ method: 'POST' }),
       );
+
+      // The backend keys the record off `customer` (matching the web banner), not `dg_customer_id`.
+      const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body as string);
+      expect(body.customer).toBe('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
+      expect(body.dg_customer_id).toBeUndefined();
     });
 
     it('should queue to offline queue on network failure', async () => {
@@ -280,7 +285,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await acceptAll();
@@ -300,18 +307,16 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await rejectAll();
 
       const prefs = getPreferences()!;
-      const essential = prefs.cookieOptions.find(
-        (opt) => opt.gtmKey === 'dg-category-essential',
-      );
-      const marketing = prefs.cookieOptions.find(
-        (opt) => opt.gtmKey === 'dg-category-marketing',
-      );
+      const essential = prefs.cookieOptions.find((opt) => opt.gtmKey === 'dg-category-essential');
+      const marketing = prefs.cookieOptions.find((opt) => opt.gtmKey === 'dg-category-marketing');
 
       expect(essential?.isEnabled).toBe(true);
       expect(marketing?.isEnabled).toBe(false);
@@ -371,7 +376,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await savePreferences({
@@ -414,7 +421,9 @@ describe('ConsentManager', () => {
       global.fetch = jest.fn().mockResolvedValue({
         status: 200,
         text: () => Promise.resolve(''),
-        headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
       });
 
       await trackBannerShown();
@@ -425,7 +434,9 @@ describe('ConsentManager', () => {
       );
 
       const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
-      expect(url).toContain('dg_customer_id=ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
+      expect(url).toContain('customer=ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
+      // The backend keys the record off `customer`; the legacy `dg_customer_id` is not sent.
+      expect(url).not.toContain('dg_customer_id');
       expect(url).toContain('config_version=cc959465-747d-4c81-8bc1-5dcd34dc3756');
       expect(url).toContain('consent_id=');
       expect(url).toContain('timestamp=');

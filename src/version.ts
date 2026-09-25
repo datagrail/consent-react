@@ -28,8 +28,10 @@ export const SDK_VERSION: string = readVersion();
  * Consent-config wire schema version this SDK's models are written against
  * — sent as `schema_version` on analytics calls, distinct from
  * `CURRENT_SCHEMA_VERSION` in `storage/keys.ts` (this SDK's own local MMKV
- * storage-format migration version — an unrelated concept). This SDK
- * mirrors the v1 wire format byte-for-byte, so this is a build-time
- * constant, not something read from the fetched config.
+ * storage-format migration version — an unrelated concept). It is the
+ * `package` version of the dgapp consent_schema config.proto vendored under
+ * `consent_schema/`, pinned by `__tests__/schemaVersion.contract.test.ts`;
+ * bump the two together. A literal rather than a generated value: this SDK
+ * doesn't consume consent-schema's generated types.
  */
 export const CONFIG_SCHEMA_VERSION = 'v1';
