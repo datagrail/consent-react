@@ -8,4 +8,8 @@ RCT_EXTERN_METHOD(computeUserHash:(NSString *)customerId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(sha256Hex:(NSString *)input
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

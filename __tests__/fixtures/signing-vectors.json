@@ -1,0 +1,1335 @@
+{
+  "description": "Universal Consent server-SDK cross-language contract corpus (TRUST-2907 + TRUST-2971 provenance binding). Every SDK must reproduce expected.* exactly. userHash = sha256_hex(\"{customerId}:{projectId}:{lower(trim(nfc(identifier)))}\"). provDigest = sha256_hex(is_explicit_str + \"\\n\" + decision_ts_str + \"\\n\" + actor_id_str), resolving is_explicit(absent->\"true\"), decision_ts(absent->request timestamp, base-10 unix seconds), actor_id(absent->\"\"). single stringToSign = \"{customerId}:{userHash}:{timestamp}:{nonce}:{provDigest}\". bulk: recordToken = user_hash + \"\\n\" + provDigest(record); bulkSignSlot = sha256_hex(sorted(recordTokens).join(\",\")); top-level provenance slot = bulkProvSentinel = provDigest(\"true\", timestamp, \"\"); stringToSign = \"{customerId}:{bulkSignSlot}:{timestamp}:{nonce}:{bulkProvSentinel}\". signature = hmac_sha256_hex(hex_decode(secretHex), stringToSign). Corpus is AUTHORITATIVE per spec §2.4; the edge and all client/server SDKs implement against it.",
+  "generator": "server-sdks/node/scripts/generate-signing-vectors.js",
+  "single": [
+    {
+      "name": "plain-email",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "user@example.com",
+        "timestamp": 1760000000,
+        "nonce": "00112233445566778899aabbccddeeff",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000000",
+          "actorIdStr": ""
+        },
+        "provDigest": "4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000000:00112233445566778899aabbccddeeff:4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+        "signature": "d330c47aaa8854e28fe5fad20ded01acfe94b07617f0094d5749b5d905344674"
+      }
+    },
+    {
+      "name": "uppercase-folds",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "User@Example.COM",
+        "timestamp": 1760000000,
+        "nonce": "00112233445566778899aabbccddeeff",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000000",
+          "actorIdStr": ""
+        },
+        "provDigest": "4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000000:00112233445566778899aabbccddeeff:4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+        "signature": "d330c47aaa8854e28fe5fad20ded01acfe94b07617f0094d5749b5d905344674"
+      }
+    },
+    {
+      "name": "surrounding-whitespace-trimmed",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "  \tuser@example.com\n ",
+        "timestamp": 1760000000,
+        "nonce": "00112233445566778899aabbccddeeff",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000000",
+          "actorIdStr": ""
+        },
+        "provDigest": "4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000000:00112233445566778899aabbccddeeff:4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+        "signature": "d330c47aaa8854e28fe5fad20ded01acfe94b07617f0094d5749b5d905344674"
+      }
+    },
+    {
+      "name": "inner-whitespace-kept",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "first last",
+        "timestamp": 1760000001,
+        "nonce": "ffeeddccbbaa99887766554433221100",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "first last",
+        "userHash": "d2833fe7358ef3b369ecdf105eab7eb9aba51fd59d7f2e8aa2e328fb94480e11",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000001",
+          "actorIdStr": ""
+        },
+        "provDigest": "30c7a1c971f4f4e2dba451fe09b55143cd52ecc7bc055a8d45d5eee994b74ecc",
+        "stringToSign": "cust_abc123:d2833fe7358ef3b369ecdf105eab7eb9aba51fd59d7f2e8aa2e328fb94480e11:1760000001:ffeeddccbbaa99887766554433221100:30c7a1c971f4f4e2dba451fe09b55143cd52ecc7bc055a8d45d5eee994b74ecc",
+        "signature": "4eafe96442f93309505b330f572da606778d7e08f9b279369772336c738faa0a"
+      }
+    },
+    {
+      "name": "nfd-to-nfc",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "José@example.com",
+        "timestamp": 1760000002,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "josé@example.com",
+        "userHash": "61d9fb50e72e1f1f40022b0deb7905173645b246210c01a1efca22fea08ad80c",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000002",
+          "actorIdStr": ""
+        },
+        "provDigest": "b8cdcc9a6057b188641aafb3d8bf770528a0629132cb70f66bbf2b0a048a349b",
+        "stringToSign": "cust_abc123:61d9fb50e72e1f1f40022b0deb7905173645b246210c01a1efca22fea08ad80c:1760000002:0123456789abcdef0123456789abcdef:b8cdcc9a6057b188641aafb3d8bf770528a0629132cb70f66bbf2b0a048a349b",
+        "signature": "69c827f88dba2c77e21d2f25a12e293a3e88ff8e527aacd16feb87c177c64d15"
+      }
+    },
+    {
+      "name": "precomposed-matches-nfd",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "José@example.com",
+        "timestamp": 1760000002,
+        "nonce": "0123456789abcdef0123456789abcdef",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "josé@example.com",
+        "userHash": "61d9fb50e72e1f1f40022b0deb7905173645b246210c01a1efca22fea08ad80c",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000002",
+          "actorIdStr": ""
+        },
+        "provDigest": "b8cdcc9a6057b188641aafb3d8bf770528a0629132cb70f66bbf2b0a048a349b",
+        "stringToSign": "cust_abc123:61d9fb50e72e1f1f40022b0deb7905173645b246210c01a1efca22fea08ad80c:1760000002:0123456789abcdef0123456789abcdef:b8cdcc9a6057b188641aafb3d8bf770528a0629132cb70f66bbf2b0a048a349b",
+        "signature": "69c827f88dba2c77e21d2f25a12e293a3e88ff8e527aacd16feb87c177c64d15"
+      }
+    },
+    {
+      "name": "dotted-capital-i",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "İSTANBUL",
+        "timestamp": 1760000003,
+        "nonce": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "i̇stanbul",
+        "userHash": "3ada8ff0ff5cb050b8228b448c2369a6960cbdd9cd9eaedc033811c298323461",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000003",
+          "actorIdStr": ""
+        },
+        "provDigest": "4a9a4a573d1c95b419a1b6e6b4bfa78dffdd676768a36447de318d777d9431c0",
+        "stringToSign": "cust_abc123:3ada8ff0ff5cb050b8228b448c2369a6960cbdd9cd9eaedc033811c298323461:1760000003:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:4a9a4a573d1c95b419a1b6e6b4bfa78dffdd676768a36447de318d777d9431c0",
+        "signature": "277585e9486e918ccdee0aac97496437889b1dd3ffa150a2b131140d9ad6c457"
+      }
+    },
+    {
+      "name": "final-sigma",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΟΔΥΣΣΕΥΣ",
+        "timestamp": 1760000004,
+        "nonce": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "οδυσσευς",
+        "userHash": "6337223f8c9f66c4dc2a5e33ecb2afe2f50ef6f4cd623d34d40a152e48c3324e",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000004",
+          "actorIdStr": ""
+        },
+        "provDigest": "f27f38ace9a178b502a51def0f6d0b242151d4059ec702efcc3c59355d1819a3",
+        "stringToSign": "cust_abc123:6337223f8c9f66c4dc2a5e33ecb2afe2f50ef6f4cd623d34d40a152e48c3324e:1760000004:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:f27f38ace9a178b502a51def0f6d0b242151d4059ec702efcc3c59355d1819a3",
+        "signature": "0f88ab2147065b5298b656f9224ee33ea472919ca550feca7136ce8f773ab5cc"
+      }
+    },
+    {
+      "name": "capital-sharp-s",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "STRAẞE",
+        "timestamp": 1760000005,
+        "nonce": "cccccccccccccccccccccccccccccccc",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "straße",
+        "userHash": "9d1397aa1e4a8e587849e6b225ff468137f3aeb3c02b3b251aee381724fa6bc2",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000005",
+          "actorIdStr": ""
+        },
+        "provDigest": "7354ffe2ab93efda6f48ef582896ec653bdccf8ed868dfeba22c43313dde58fb",
+        "stringToSign": "cust_abc123:9d1397aa1e4a8e587849e6b225ff468137f3aeb3c02b3b251aee381724fa6bc2:1760000005:cccccccccccccccccccccccccccccccc:7354ffe2ab93efda6f48ef582896ec653bdccf8ed868dfeba22c43313dde58fb",
+        "signature": "969991b8439162660e8be12a989a4be4f8d204691c98a56273ee8a382acdf27a"
+      }
+    },
+    {
+      "name": "cjk-and-emoji",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "用户😀",
+        "timestamp": 1760000006,
+        "nonce": "dddddddddddddddddddddddddddddddd",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "用户😀",
+        "userHash": "657dc2bfd6f92165fec8bc889411e9d43d10ff2675e21d57aabcfdb6f5aac6a4",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000006",
+          "actorIdStr": ""
+        },
+        "provDigest": "655df63b90cf08dd955d55a0a8457c47aafb58fdae094f3ef4dbe5cdb701059e",
+        "stringToSign": "cust_abc123:657dc2bfd6f92165fec8bc889411e9d43d10ff2675e21d57aabcfdb6f5aac6a4:1760000006:dddddddddddddddddddddddddddddddd:655df63b90cf08dd955d55a0a8457c47aafb58fdae094f3ef4dbe5cdb701059e",
+        "signature": "07050e099c2840304389791e691d6b06a3734f7686b63935fe1d8305cea89d0a"
+      }
+    },
+    {
+      "name": "numeric-user-id",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "000123456",
+        "timestamp": 1760000007,
+        "nonce": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "000123456",
+        "userHash": "ae11de462b5232c38f152cbfbf1e3a1b74313c4a19ddf5a869ffe0f44628fa8e",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000007",
+          "actorIdStr": ""
+        },
+        "provDigest": "c1023702254741c67dd1525aa17b525f2a4396583ccca2abdce779f9c1b65a43",
+        "stringToSign": "cust_abc123:ae11de462b5232c38f152cbfbf1e3a1b74313c4a19ddf5a869ffe0f44628fa8e:1760000007:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:c1023702254741c67dd1525aa17b525f2a4396583ccca2abdce779f9c1b65a43",
+        "signature": "2efcbb5da6d314653a492a1874fcd20b4bfd93729b872f3d640531912d15a9d1"
+      }
+    },
+    {
+      "name": "colon-in-identifier",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "tenant:42:user",
+        "timestamp": 1760000008,
+        "nonce": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "tenant:42:user",
+        "userHash": "350b9b73c78632753e254bb6460bb9b67813da7a8bd8a1db7b0944914af44c7d",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000008",
+          "actorIdStr": ""
+        },
+        "provDigest": "98276fe22d92aac280a9cc02491abd92195d35e49a49739acff8149fd71a384b",
+        "stringToSign": "cust_abc123:350b9b73c78632753e254bb6460bb9b67813da7a8bd8a1db7b0944914af44c7d:1760000008:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f:98276fe22d92aac280a9cc02491abd92195d35e49a49739acff8149fd71a384b",
+        "signature": "ff4ac05ca66adb9fe7f361ede36315e587521d273d465bb60a2be5df77f16094"
+      }
+    },
+    {
+      "name": "uuid-customer-id",
+      "input": {
+        "customerId": "5f0c7a2e-1b3d-4e6f-8a9b-0c1d2e3f4a5b",
+        "projectId": "default",
+        "identifier": "phone:+14155550100",
+        "timestamp": 1999999999,
+        "nonce": "11111111111111111111111111111111",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "phone:+14155550100",
+        "userHash": "575dbb42e33b6c5856e28b9b1b8a53ffe2ee00f40dbce1e99c42f9e8cc98f6f2",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1999999999",
+          "actorIdStr": ""
+        },
+        "provDigest": "89f6035cec368faf8aea0c48b44ced908425a17eada2f652e6c6c13eb418de9b",
+        "stringToSign": "5f0c7a2e-1b3d-4e6f-8a9b-0c1d2e3f4a5b:575dbb42e33b6c5856e28b9b1b8a53ffe2ee00f40dbce1e99c42f9e8cc98f6f2:1999999999:11111111111111111111111111111111:89f6035cec368faf8aea0c48b44ced908425a17eada2f652e6c6c13eb418de9b",
+        "signature": "23187a7f674d11647a19d0af42c13d5a1a996a2300a8a8d5d807b5561f5fb8da"
+      }
+    },
+    {
+      "name": "zero-timestamp",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "user@example.com",
+        "timestamp": 0,
+        "nonce": "22222222222222222222222222222222",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "0",
+          "actorIdStr": ""
+        },
+        "provDigest": "542e6e399ba3555ba5ccd3348f27f9f130573cbb0f0c036baeaba7713bc8eb9d",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:0:22222222222222222222222222222222:542e6e399ba3555ba5ccd3348f27f9f130573cbb0f0c036baeaba7713bc8eb9d",
+        "signature": "c824b971ebc14e9fd99b9ed74d9bf0a856f389aebe4ff69c8c1c288cfac31e50"
+      }
+    },
+    {
+      "name": "sigma-final-before-modifier-letter",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣʰ",
+        "timestamp": 1760000009,
+        "nonce": "10101010101010101010101010101010",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "αςʰ",
+        "userHash": "72403afa2579450eb0897185bd2b842607c54c1848d2d00b67a391e4ff81062f",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000009",
+          "actorIdStr": ""
+        },
+        "provDigest": "57d9b13a2bbef5d55c9e05d41adcabd8ee369071853b89e850cf605e70238c9d",
+        "stringToSign": "cust_abc123:72403afa2579450eb0897185bd2b842607c54c1848d2d00b67a391e4ff81062f:1760000009:10101010101010101010101010101010:57d9b13a2bbef5d55c9e05d41adcabd8ee369071853b89e850cf605e70238c9d",
+        "signature": "fd3be852e2b8e3bbe1fd656955ef64fa08f6d0ede31f78fe77b9f7d6b52bc4de"
+      }
+    },
+    {
+      "name": "sigma-after-modifier-letter-not-final",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ʰΣ",
+        "timestamp": 1760000010,
+        "nonce": "20202020202020202020202020202020",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ʰσ",
+        "userHash": "2962a5c1cec460ab565fb1eb6acfa1c1a9fcb574140041e90ff14794fae31f0c",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000010",
+          "actorIdStr": ""
+        },
+        "provDigest": "d42f312d9e7250d142af8e9e351aeea43b04a5f619466e0688cdf5d571665384",
+        "stringToSign": "cust_abc123:2962a5c1cec460ab565fb1eb6acfa1c1a9fcb574140041e90ff14794fae31f0c:1760000010:20202020202020202020202020202020:d42f312d9e7250d142af8e9e351aeea43b04a5f619466e0688cdf5d571665384",
+        "signature": "deed23862605877714df7b01d3a074833b66de4e5ec914ee8a3dc6d8b5ac712b"
+      }
+    },
+    {
+      "name": "sigma-final-across-modifier-letter",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑʰΣ",
+        "timestamp": 1760000011,
+        "nonce": "30303030303030303030303030303030",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "αʰς",
+        "userHash": "6c63d7ca430d82cd55beda619b68a445eac618bbd3be48e99b096233113fc4f9",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000011",
+          "actorIdStr": ""
+        },
+        "provDigest": "5ae15afd29914b2d412741b946e777518372198e47588c3dcb5d68b2073fd803",
+        "stringToSign": "cust_abc123:6c63d7ca430d82cd55beda619b68a445eac618bbd3be48e99b096233113fc4f9:1760000011:30303030303030303030303030303030:5ae15afd29914b2d412741b946e777518372198e47588c3dcb5d68b2073fd803",
+        "signature": "63341990e3596b627dba3fd5cbf350427e7cc7ded740fbc95df2ea5a19b3c7f8"
+      }
+    },
+    {
+      "name": "sigma-internal-across-modifier-letter",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣʰΒ",
+        "timestamp": 1760000012,
+        "nonce": "40404040404040404040404040404040",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασʰβ",
+        "userHash": "5746ff5ed7095d5d351bf8b91677342832ad91eaa2fdcdc26b0e161c736a6854",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000012",
+          "actorIdStr": ""
+        },
+        "provDigest": "6963be8c6338231c5f5b0ce411604f83abfcf7b2c415e4b138e2c93dad7327ea",
+        "stringToSign": "cust_abc123:5746ff5ed7095d5d351bf8b91677342832ad91eaa2fdcdc26b0e161c736a6854:1760000012:40404040404040404040404040404040:6963be8c6338231c5f5b0ce411604f83abfcf7b2c415e4b138e2c93dad7327ea",
+        "signature": "bd162a005b3835fcd0ca959d7815c626edd85453e3c99d0d7f5f1516f65ca08b"
+      }
+    },
+    {
+      "name": "sigma-final-after-soft-hyphen",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "Α­Σ",
+        "timestamp": 1760000013,
+        "nonce": "50505050505050505050505050505050",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "α­ς",
+        "userHash": "e23bff09d5cb7c24fdb34628a6497253f746d7f86cf35a1b4df9e2abe903652c",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000013",
+          "actorIdStr": ""
+        },
+        "provDigest": "46eaa2230633d9cf931cf74b0d4c749b366fd4cdd20c0de78bd6a5d2a2d256b7",
+        "stringToSign": "cust_abc123:e23bff09d5cb7c24fdb34628a6497253f746d7f86cf35a1b4df9e2abe903652c:1760000013:50505050505050505050505050505050:46eaa2230633d9cf931cf74b0d4c749b366fd4cdd20c0de78bd6a5d2a2d256b7",
+        "signature": "cbd27d94ec06e9bac854ca863906cb86fb4476948a1809503408faa0a34b89df"
+      }
+    },
+    {
+      "name": "sigma-final-before-combining-mark",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ́",
+        "timestamp": 1760000014,
+        "nonce": "60606060606060606060606060606060",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ας́",
+        "userHash": "bb79569b9305425a06b71ad3050a50e7043ffa89151d0ed945618c5683e58360",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000014",
+          "actorIdStr": ""
+        },
+        "provDigest": "ba11262e2ed94e39d8bdd2f0841ded78b03ce1a5b8cf1de886043300397cb0a5",
+        "stringToSign": "cust_abc123:bb79569b9305425a06b71ad3050a50e7043ffa89151d0ed945618c5683e58360:1760000014:60606060606060606060606060606060:ba11262e2ed94e39d8bdd2f0841ded78b03ce1a5b8cf1de886043300397cb0a5",
+        "signature": "277b382dc2402746fd28df4f8be1575698931d97cbf936ebe80211fcc6cb0fc7"
+      }
+    },
+    {
+      "name": "sigma-internal-across-apostrophe",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ'Β",
+        "timestamp": 1760000015,
+        "nonce": "70707070707070707070707070707070",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασ'β",
+        "userHash": "63ab48bacfecc820826b2225c0b83c6616af470bdc51d7f9c7834fb8a4a5aa70",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000015",
+          "actorIdStr": ""
+        },
+        "provDigest": "9c0b2458c4873f915136d7c42effa50ac577434c381d5b2b94717d4e2da07060",
+        "stringToSign": "cust_abc123:63ab48bacfecc820826b2225c0b83c6616af470bdc51d7f9c7834fb8a4a5aa70:1760000015:70707070707070707070707070707070:9c0b2458c4873f915136d7c42effa50ac577434c381d5b2b94717d4e2da07060",
+        "signature": "6a96c0d4246ffa187a24e638f2f77e36085b6292b42945c695bdaca94447bf98"
+      }
+    },
+    {
+      "name": "sigma-internal-across-soft-hyphen",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ­Β",
+        "timestamp": 1760000016,
+        "nonce": "80808080808080808080808080808080",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασ­β",
+        "userHash": "79bcfbbcc829f8da497666355696c19589ff387ab8f12a5c4fbd387a55ff2909",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000016",
+          "actorIdStr": ""
+        },
+        "provDigest": "b31832f767bf028ebc184b5e5732dc02cc3f4821bbffc0eeecb395b1555ca79f",
+        "stringToSign": "cust_abc123:79bcfbbcc829f8da497666355696c19589ff387ab8f12a5c4fbd387a55ff2909:1760000016:80808080808080808080808080808080:b31832f767bf028ebc184b5e5732dc02cc3f4821bbffc0eeecb395b1555ca79f",
+        "signature": "f42736dc2f60704b2e38aee062d0a1b0141cec3e85bf62ea54efc507fb6d9900"
+      }
+    },
+    {
+      "name": "sigma-internal-across-period",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ.Β",
+        "timestamp": 1760000017,
+        "nonce": "90909090909090909090909090909090",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασ.β",
+        "userHash": "872a86abc05c814a5d563d76278e0290cf869d70c82bb2752f955a25b88b6b93",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000017",
+          "actorIdStr": ""
+        },
+        "provDigest": "adc1a0a9b719139e390580c62cb028ff9be2f79ca851cc2f5419b3d189860d42",
+        "stringToSign": "cust_abc123:872a86abc05c814a5d563d76278e0290cf869d70c82bb2752f955a25b88b6b93:1760000017:90909090909090909090909090909090:adc1a0a9b719139e390580c62cb028ff9be2f79ca851cc2f5419b3d189860d42",
+        "signature": "96c576b5b3b703b612881b081234e735b60689a1747c98dba4bb16401046ed56"
+      }
+    },
+    {
+      "name": "sigma-internal-across-colon",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ:Β",
+        "timestamp": 1760000018,
+        "nonce": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασ:β",
+        "userHash": "fdc95b4ddc1b7df49ce4f2cccf5ba620d8a5d9ae7ba94beccaabe3d0d76e0d36",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000018",
+          "actorIdStr": ""
+        },
+        "provDigest": "3fad17a4e06d7a30b2be5ac3ccd5eccb484e4b0d37ffdb1b69378aa7ce919d03",
+        "stringToSign": "cust_abc123:fdc95b4ddc1b7df49ce4f2cccf5ba620d8a5d9ae7ba94beccaabe3d0d76e0d36:1760000018:a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0:3fad17a4e06d7a30b2be5ac3ccd5eccb484e4b0d37ffdb1b69378aa7ce919d03",
+        "signature": "10aa833636f3f2e21eac31f039bd7fac1a4b61d2426bc69e1a6c5eea226561df"
+      }
+    },
+    {
+      "name": "sigma-final-per-word",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ ΑΣ",
+        "timestamp": 1760000019,
+        "nonce": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ας ας",
+        "userHash": "1aac225fc2992885e134e4a48f339b96a1f2cc9a6f0313a8eb6cbe1cad210439",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000019",
+          "actorIdStr": ""
+        },
+        "provDigest": "125bbc065c0795724e36bb2b4fc227757b3f8e7996a8343056c17ace6ba1fbe5",
+        "stringToSign": "cust_abc123:1aac225fc2992885e134e4a48f339b96a1f2cc9a6f0313a8eb6cbe1cad210439:1760000019:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0:125bbc065c0795724e36bb2b4fc227757b3f8e7996a8343056c17ace6ba1fbe5",
+        "signature": "d2b46ee00c86fd919c904b4f2b74f41d27e6b03e1aabc8fa67fe507a6f68031a"
+      }
+    },
+    {
+      "name": "sigma-lone-capital",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "Σ",
+        "timestamp": 1760000020,
+        "nonce": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "σ",
+        "userHash": "2fdf81a854cc0a2a886a220dc0ebdc3e3f06bc9d0f4e34d5fe6011c8dddea6b7",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000020",
+          "actorIdStr": ""
+        },
+        "provDigest": "308ea869bafc210cb9c4da71c486776eaed760fbd57c0cf2eb0d3469e228d796",
+        "stringToSign": "cust_abc123:2fdf81a854cc0a2a886a220dc0ebdc3e3f06bc9d0f4e34d5fe6011c8dddea6b7:1760000020:c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0:308ea869bafc210cb9c4da71c486776eaed760fbd57c0cf2eb0d3469e228d796",
+        "signature": "4026c8e7042e2e894333b5f1596f7bfbea792fd8993533aef429bc28d2aef0ff"
+      }
+    },
+    {
+      "name": "sigma-final-after-latin-in-email",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "USERΣ@EXAMPLE.COM",
+        "timestamp": 1760000021,
+        "nonce": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "userς@example.com",
+        "userHash": "a38b0274391040ee52c90d1905711ddc5882f110588ee802c668ca94f25236f4",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000021",
+          "actorIdStr": ""
+        },
+        "provDigest": "226d4cdb8e3e1574260a1f3653b4a04c511539b2c9e19f73c96494c70575a81a",
+        "stringToSign": "cust_abc123:a38b0274391040ee52c90d1905711ddc5882f110588ee802c668ca94f25236f4:1760000021:d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0:226d4cdb8e3e1574260a1f3653b4a04c511539b2c9e19f73c96494c70575a81a",
+        "signature": "79ac9bf70988c3a33b7af2a9a4d40093e7059e3a282bbcd4ce1bd741b7e6be26"
+      }
+    },
+    {
+      "name": "sigma-final-after-astral-cased",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "𐐀Σ",
+        "timestamp": 1760000022,
+        "nonce": "e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "𐐨ς",
+        "userHash": "aee9b2e3644fff6aff57ff2813ac64ef031fbfd310cd0d730e433486dfdfac08",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000022",
+          "actorIdStr": ""
+        },
+        "provDigest": "f0d13c087f1408cb8d8bbf40636dcb4bee4a3a02558d236e23278698b185abef",
+        "stringToSign": "cust_abc123:aee9b2e3644fff6aff57ff2813ac64ef031fbfd310cd0d730e433486dfdfac08:1760000022:e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0:f0d13c087f1408cb8d8bbf40636dcb4bee4a3a02558d236e23278698b185abef",
+        "signature": "b7f1e97362e8b270c7a77855ed5a6efd1064c6fde34f566f5ec2d209d4a08ad2"
+      }
+    },
+    {
+      "name": "astral-case-mapping",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "𐐀𝐀",
+        "timestamp": 1760000023,
+        "nonce": "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "𐐨𝐀",
+        "userHash": "f7b3f8fe91ad1d9f04309a4e3d32d7cdbbcddcc55d57b95ae4b622f7704d2a6a",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000023",
+          "actorIdStr": ""
+        },
+        "provDigest": "9302940781b66148ce2981eea6960abc560170c3b93997ec8e2a2c08b9d34f13",
+        "stringToSign": "cust_abc123:f7b3f8fe91ad1d9f04309a4e3d32d7cdbbcddcc55d57b95ae4b622f7704d2a6a:1760000023:f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0:9302940781b66148ce2981eea6960abc560170c3b93997ec8e2a2c08b9d34f13",
+        "signature": "1b893ce8c9a191d6cd0918454aa1f95d519c5dc571f976041b7434b19dc1c072"
+      }
+    },
+    {
+      "name": "sigma-final-across-modifier-symbol",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "Α^Σ",
+        "timestamp": 1760000026,
+        "nonce": "03030303030303030303030303030303",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "α^ς",
+        "userHash": "a0ea111801ee53bf39986177696a6053056d7b41351851dea42bae7b8b932dbb",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000026",
+          "actorIdStr": ""
+        },
+        "provDigest": "a9812109be97575db60c6affe2270943b971e3d674208cf81f561047b907630a",
+        "stringToSign": "cust_abc123:a0ea111801ee53bf39986177696a6053056d7b41351851dea42bae7b8b932dbb:1760000026:03030303030303030303030303030303:a9812109be97575db60c6affe2270943b971e3d674208cf81f561047b907630a",
+        "signature": "5cc745101c7b7a79eeb7edb8db136c5b9e4766354a1fc9664f9e935aa498ad95"
+      }
+    },
+    {
+      "name": "sigma-internal-across-grave-accent",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ`Β",
+        "timestamp": 1760000027,
+        "nonce": "04040404040404040404040404040404",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασ`β",
+        "userHash": "e091faa3957e99002567074c57770859aeded080ebfb7c3e8c1ba0c4546aca2c",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000027",
+          "actorIdStr": ""
+        },
+        "provDigest": "ea5b0c542471837c782b0a01bde2ce78e56a00a1e4df66824f5c0743cd9dea54",
+        "stringToSign": "cust_abc123:e091faa3957e99002567074c57770859aeded080ebfb7c3e8c1ba0c4546aca2c:1760000027:04040404040404040404040404040404:ea5b0c542471837c782b0a01bde2ce78e56a00a1e4df66824f5c0743cd9dea54",
+        "signature": "aae7eb2986ff48bdad4de2c30adb4838ddb8615cbe6620d3f4146cf21e66c169"
+      }
+    },
+    {
+      "name": "sigma-internal-across-mark-tag-and-leader",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΑΣ́󠁁․ẞ",
+        "timestamp": 1760000028,
+        "nonce": "05050505050505050505050505050505",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ασ́󠁁․ß",
+        "userHash": "015fbf546ae5f2b047eb18ea7034891094e140b37c9fffaa741f5441774f7dba",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000028",
+          "actorIdStr": ""
+        },
+        "provDigest": "42d90a100a2ca40a8becf244180b665de505f23da2864c4812885d5e6ec2176a",
+        "stringToSign": "cust_abc123:015fbf546ae5f2b047eb18ea7034891094e140b37c9fffaa741f5441774f7dba:1760000028:05050505050505050505050505050505:42d90a100a2ca40a8becf244180b665de505f23da2864c4812885d5e6ec2176a",
+        "signature": "e33ede809ddec612b6fb259e93ae4198b4f98f3befc872fe996ea33b95ab01e2"
+      }
+    },
+    {
+      "name": "sigma-final-after-astral-cased-and-format",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "𑢠᠎Σ",
+        "timestamp": 1760000029,
+        "nonce": "06060606060606060606060606060606",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "𑣀᠎ς",
+        "userHash": "7de116b59a8b6d2c10d84f74ba1458d69c422aeb449bd432a003e28f82a83c6e",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000029",
+          "actorIdStr": ""
+        },
+        "provDigest": "5b68c53d6b98a56e96dee8966d88c3105b349befb45652d697ff8a2494b5d2d0",
+        "stringToSign": "cust_abc123:7de116b59a8b6d2c10d84f74ba1458d69c422aeb449bd432a003e28f82a83c6e:1760000029:06060606060606060606060606060606:5b68c53d6b98a56e96dee8966d88c3105b349befb45652d697ff8a2494b5d2d0",
+        "signature": "17aaefdcd4a28a19c62007a4f40c7d5c121bf9e1e06d0b00c9b3cdc6202ee5cd"
+      }
+    },
+    {
+      "name": "sigma-internal-before-greek-extended",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "ΩΣ˳ᾈ",
+        "timestamp": 1760000030,
+        "nonce": "07070707070707070707070707070707",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "ωσ˳ᾀ",
+        "userHash": "5dd694e3f3d81debd6bd0dc9ddb231a1f08400ccd8483a93835ea2e9281b3b7f",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000030",
+          "actorIdStr": ""
+        },
+        "provDigest": "769f5c8d883d7256d601c8c7fec043cb22a30af025d924f6651dcbc4018989f0",
+        "stringToSign": "cust_abc123:5dd694e3f3d81debd6bd0dc9ddb231a1f08400ccd8483a93835ea2e9281b3b7f:1760000030:07070707070707070707070707070707:769f5c8d883d7256d601c8c7fec043cb22a30af025d924f6651dcbc4018989f0",
+        "signature": "7e41a58b358f501a852d7041803031471c4d51c680810e42207ebee3d7bcff50"
+      }
+    },
+    {
+      "name": "nfc-astral-starter-does-not-compose",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "𐁁́󠁁́",
+        "timestamp": 1760000031,
+        "nonce": "08080808080808080808080808080808",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "𐁁́󠁁́",
+        "userHash": "74e480785e9b6e2cb60c13da86b92c0b051d2fd2a4aa33a590edc782874c180c",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000031",
+          "actorIdStr": ""
+        },
+        "provDigest": "55786ff77c73db874bd323107560e356e54fa3dfad0337c17cca5d1af45f190f",
+        "stringToSign": "cust_abc123:74e480785e9b6e2cb60c13da86b92c0b051d2fd2a4aa33a590edc782874c180c:1760000031:08080808080808080808080808080808:55786ff77c73db874bd323107560e356e54fa3dfad0337c17cca5d1af45f190f",
+        "signature": "8adec6582d2179bbefb1986600c7bcbf6eff4fd750564e9f2185b8b0c48972f1"
+      }
+    },
+    {
+      "name": "nfc-astral-composition",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "𑂚",
+        "timestamp": 1760000032,
+        "nonce": "09090909090909090909090909090909",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "𑂚",
+        "userHash": "35efd1fb60e2549771d32ac387427ee0f3d16710c29a98d0115e5d65d3c0b2ab",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000032",
+          "actorIdStr": ""
+        },
+        "provDigest": "9fc40e2e2e64837174b410de475fa20a67aa7115cdcb7e0dcef2c666e29de986",
+        "stringToSign": "cust_abc123:35efd1fb60e2549771d32ac387427ee0f3d16710c29a98d0115e5d65d3c0b2ab:1760000032:09090909090909090909090909090909:9fc40e2e2e64837174b410de475fa20a67aa7115cdcb7e0dcef2c666e29de986",
+        "signature": "d693012336864d4aaed2c07bd8fcf9931e02ad34b249b3e70bd3f7967d2bb93f"
+      }
+    },
+    {
+      "name": "js-trim-unicode-whitespace",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": " 　 ﻿\u000buser@example.com    ",
+        "timestamp": 1760000024,
+        "nonce": "01010101010101010101010101010101",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000024",
+          "actorIdStr": ""
+        },
+        "provDigest": "468ee4b0674702eadf58458661b9303673545f0930cec32d4f7e58f87c2a2f96",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000024:01010101010101010101010101010101:468ee4b0674702eadf58458661b9303673545f0930cec32d4f7e58f87c2a2f96",
+        "signature": "8aa594ac1259a714e9f92e9b2fd987cb220afda7da9ea188512f8be7cb4e432a"
+      }
+    },
+    {
+      "name": "js-trim-keeps-non-js-whitespace",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "\u0000\u001fuser@example.com​᠎\u0000",
+        "timestamp": 1760000025,
+        "nonce": "02020202020202020202020202020202",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "\u0000\u001fuser@example.com​᠎\u0000",
+        "userHash": "d55b8c9ca2f783bad9421707549ca67deb801345550ae86354a239e3b5a75409",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000025",
+          "actorIdStr": ""
+        },
+        "provDigest": "b356e4b53d7c4fd828166d26038005720c6da30dc1cc5abcb33495a604ccd695",
+        "stringToSign": "cust_abc123:d55b8c9ca2f783bad9421707549ca67deb801345550ae86354a239e3b5a75409:1760000025:02020202020202020202020202020202:b356e4b53d7c4fd828166d26038005720c6da30dc1cc5abcb33495a604ccd695",
+        "signature": "069074d8515fea4989c2b2c9f4475082fb285753cd0fe64ad893d82f7dfc5102"
+      }
+    },
+    {
+      "name": "provenance-absent-defaults",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "user@example.com",
+        "timestamp": 1760000200,
+        "nonce": "11223344556677889900aabbccddeeff",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": null
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000200",
+          "actorIdStr": ""
+        },
+        "provDigest": "4da6bd8c0af3849299af6b7f42486afb7dff7fcf0e15efed70a88d7e3e48327f",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000200:11223344556677889900aabbccddeeff:4da6bd8c0af3849299af6b7f42486afb7dff7fcf0e15efed70a88d7e3e48327f",
+        "signature": "66aa8eafc8784e103721046fe9689a65c53cae6626291568ba94415aaf79a335"
+      }
+    },
+    {
+      "name": "provenance-backfill-past-implicit",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "user@example.com",
+        "timestamp": 1760000200,
+        "nonce": "ab11223344556677889900aabbccddee",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "provenance": {
+          "isExplicit": false,
+          "decisionTs": 1600000000,
+          "actorId": "importer-batch-7"
+        }
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "false",
+          "decisionTsStr": "1600000000",
+          "actorIdStr": "importer-batch-7"
+        },
+        "provDigest": "72aa888869dacdad44552b2def64cf78fc983faa5dfe105b0954d1d236f33c6a",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000200:ab11223344556677889900aabbccddee:72aa888869dacdad44552b2def64cf78fc983faa5dfe105b0954d1d236f33c6a",
+        "signature": "c5563b11f3a492745ff5e1f04114afc2008401ffd0c396e11663b9717f7e7281"
+      }
+    },
+    {
+      "name": "provenance-actor-id-colon-and-newline",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "user@example.com",
+        "timestamp": 1760000201,
+        "nonce": "cd11223344556677889900aabbccddee",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b",
+        "provenance": {
+          "isExplicit": true,
+          "actorId": "svc:batch:42\n"
+        }
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000201",
+          "actorIdStr": "svc:batch:42\n"
+        },
+        "provDigest": "92e80c3ca62a8ba710bbd2c39d9abb9276436b7f276ea410a42cba81c7c66837",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000201:cd11223344556677889900aabbccddee:92e80c3ca62a8ba710bbd2c39d9abb9276436b7f276ea410a42cba81c7c66837",
+        "signature": "93dc51bd6f2de1d1f5b7f4f36b595c44f09547f09743f0c2bd473d071e8b9341"
+      }
+    },
+    {
+      "name": "provenance-explicit-now",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "identifier": "user@example.com",
+        "timestamp": 1760000202,
+        "nonce": "ef11223344556677889900aabbccddee",
+        "keyId": "k1",
+        "secretHex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "provenance": {
+          "isExplicit": true,
+          "decisionTs": 1760000202,
+          "actorId": ""
+        }
+      },
+      "expected": {
+        "normalizedIdentifier": "user@example.com",
+        "userHash": "28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5",
+        "resolvedProvenance": {
+          "isExplicitStr": "true",
+          "decisionTsStr": "1760000202",
+          "actorIdStr": ""
+        },
+        "provDigest": "fa76952cd6aedad43bb7694d4a2b3e46ebb6479a2a18be420ed232aa2327801a",
+        "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000202:ef11223344556677889900aabbccddee:fa76952cd6aedad43bb7694d4a2b3e46ebb6479a2a18be420ed232aa2327801a",
+        "signature": "cb57c30729dc60e578488740c7a9e9a3538106511af6ac0d85d848a4910c3527"
+      }
+    }
+  ],
+  "bulk": [
+    {
+      "name": "bulk-single-record",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "records": [
+          {
+            "identifier": "user@example.com",
+            "provenance": null
+          }
+        ],
+        "timestamp": 1760000100,
+        "nonce": "33333333333333333333333333333333",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      },
+      "expected": {
+        "userHashes": ["28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5"],
+        "recordProvDigests": ["daba57ecb7eda08676a10a88360f3eb393d53164c994586a4a87aa7bf8e2af85"],
+        "bulkSignSlot": "de14235cb1c75a7bf0e1ff7a8e26f43501e3ea3b1ff9492a866d276767aaf985",
+        "bulkProvSentinel": "daba57ecb7eda08676a10a88360f3eb393d53164c994586a4a87aa7bf8e2af85",
+        "stringToSign": "cust_abc123:de14235cb1c75a7bf0e1ff7a8e26f43501e3ea3b1ff9492a866d276767aaf985:1760000100:33333333333333333333333333333333:daba57ecb7eda08676a10a88360f3eb393d53164c994586a4a87aa7bf8e2af85",
+        "signature": "519e49bfd73a988adb266f3d71c954d16a301770e78838bd3cdd594c5a6defab"
+      }
+    },
+    {
+      "name": "bulk-order-independent",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "records": [
+          {
+            "identifier": "c@example.com",
+            "provenance": null
+          },
+          {
+            "identifier": "a@example.com",
+            "provenance": null
+          },
+          {
+            "identifier": "b@example.com",
+            "provenance": null
+          }
+        ],
+        "timestamp": 1760000101,
+        "nonce": "44444444444444444444444444444444",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      },
+      "expected": {
+        "userHashes": [
+          "4af506966e51ee99b1571c081642867572f9d240724b49c461ee0fc1db530d93",
+          "1d59ab9157010ad355a90e0710737f2b41ff77c6735d89aa75c966fcbda88935",
+          "4f09695b64f0bc645957a3f01fc187f258ccbb80a1ebef5711a5f9716d524ca0"
+        ],
+        "recordProvDigests": [
+          "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+          "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+          "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc"
+        ],
+        "bulkSignSlot": "56d2c97c74a7f4ce02690228303404fffcf1fbdfd07ecb2dd78541738e598cc8",
+        "bulkProvSentinel": "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+        "stringToSign": "cust_abc123:56d2c97c74a7f4ce02690228303404fffcf1fbdfd07ecb2dd78541738e598cc8:1760000101:44444444444444444444444444444444:ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+        "signature": "cba395406adcba82fbd8212de27ac0e153a0b39e0322cd8331021ea634b26e2d"
+      }
+    },
+    {
+      "name": "bulk-same-set-reordered",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "records": [
+          {
+            "identifier": "b@example.com",
+            "provenance": null
+          },
+          {
+            "identifier": "c@example.com",
+            "provenance": null
+          },
+          {
+            "identifier": "a@example.com",
+            "provenance": null
+          }
+        ],
+        "timestamp": 1760000101,
+        "nonce": "44444444444444444444444444444444",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      },
+      "expected": {
+        "userHashes": [
+          "4f09695b64f0bc645957a3f01fc187f258ccbb80a1ebef5711a5f9716d524ca0",
+          "4af506966e51ee99b1571c081642867572f9d240724b49c461ee0fc1db530d93",
+          "1d59ab9157010ad355a90e0710737f2b41ff77c6735d89aa75c966fcbda88935"
+        ],
+        "recordProvDigests": [
+          "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+          "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+          "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc"
+        ],
+        "bulkSignSlot": "56d2c97c74a7f4ce02690228303404fffcf1fbdfd07ecb2dd78541738e598cc8",
+        "bulkProvSentinel": "ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+        "stringToSign": "cust_abc123:56d2c97c74a7f4ce02690228303404fffcf1fbdfd07ecb2dd78541738e598cc8:1760000101:44444444444444444444444444444444:ad886e44877a37f2047494ca9d188e6994763ae738ac7180b5523f09226fe6dc",
+        "signature": "cba395406adcba82fbd8212de27ac0e153a0b39e0322cd8331021ea634b26e2d"
+      }
+    },
+    {
+      "name": "bulk-mixed-unicode",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "records": [
+          {
+            "identifier": "José@example.com",
+            "provenance": null
+          },
+          {
+            "identifier": "  ADMIN@EXAMPLE.COM ",
+            "provenance": null
+          },
+          {
+            "identifier": "用户",
+            "provenance": null
+          }
+        ],
+        "timestamp": 1760000102,
+        "nonce": "55555555555555555555555555555555",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b"
+      },
+      "expected": {
+        "userHashes": [
+          "61d9fb50e72e1f1f40022b0deb7905173645b246210c01a1efca22fea08ad80c",
+          "1f1b59c89a17ea44ae8c23bd7a8e2d48ee672f6c1f40c75db13de7cba422e4fd",
+          "2c11ab5c742509bd28cc8f0b72410b0a61f7f8f0358d4a891e092d199131c475"
+        ],
+        "recordProvDigests": [
+          "54a85398971732c2cc2f9c08b5a155ebca4bd4f2c1f4fe631a8257ee38e457a3",
+          "54a85398971732c2cc2f9c08b5a155ebca4bd4f2c1f4fe631a8257ee38e457a3",
+          "54a85398971732c2cc2f9c08b5a155ebca4bd4f2c1f4fe631a8257ee38e457a3"
+        ],
+        "bulkSignSlot": "78cf2271d8b5767b784afd4775c5536ac8dc743793c7456274bc36ac6192aff0",
+        "bulkProvSentinel": "54a85398971732c2cc2f9c08b5a155ebca4bd4f2c1f4fe631a8257ee38e457a3",
+        "stringToSign": "cust_abc123:78cf2271d8b5767b784afd4775c5536ac8dc743793c7456274bc36ac6192aff0:1760000102:55555555555555555555555555555555:54a85398971732c2cc2f9c08b5a155ebca4bd4f2c1f4fe631a8257ee38e457a3",
+        "signature": "9053f2e4acac67f79f48ae787c6a28badabdd0fae7d675c6b0d23a4d262986ec"
+      }
+    },
+    {
+      "name": "bulk-mixed-provenance-unsorted",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "records": [
+          {
+            "identifier": "c@example.com",
+            "provenance": {
+              "isExplicit": true,
+              "decisionTs": 1700000000,
+              "actorId": "admin:1"
+            }
+          },
+          {
+            "identifier": "a@example.com",
+            "provenance": null
+          },
+          {
+            "identifier": "b@example.com",
+            "provenance": {
+              "isExplicit": false
+            }
+          }
+        ],
+        "timestamp": 1760000103,
+        "nonce": "66666666666666666666666666666666",
+        "keyId": "k1",
+        "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      },
+      "expected": {
+        "userHashes": [
+          "4af506966e51ee99b1571c081642867572f9d240724b49c461ee0fc1db530d93",
+          "1d59ab9157010ad355a90e0710737f2b41ff77c6735d89aa75c966fcbda88935",
+          "4f09695b64f0bc645957a3f01fc187f258ccbb80a1ebef5711a5f9716d524ca0"
+        ],
+        "recordProvDigests": [
+          "a83f993b84817777d23bcc4d441acd8569f199d4600b82b4a41ce4097575eaf7",
+          "73861a28ea89621599488683109511e298feb3f16baf66a5c6d0b3399b63cb11",
+          "87ca5e50dcc3d471528be12b453d52064e709553a31936b3910b789c7248e7ae"
+        ],
+        "bulkSignSlot": "04f69e5da4c05fe4fb0c651b02d7d5680d37ffe809f4d9027de580329fb6363d",
+        "bulkProvSentinel": "73861a28ea89621599488683109511e298feb3f16baf66a5c6d0b3399b63cb11",
+        "stringToSign": "cust_abc123:04f69e5da4c05fe4fb0c651b02d7d5680d37ffe809f4d9027de580329fb6363d:1760000103:66666666666666666666666666666666:73861a28ea89621599488683109511e298feb3f16baf66a5c6d0b3399b63cb11",
+        "signature": "4454433b2a2c4197c89eb8378ede8be3b5d6c7137b8fc039cfe5216ab6af7c55"
+      }
+    },
+    {
+      "name": "bulk-backfill-historical",
+      "input": {
+        "customerId": "cust_abc123",
+        "projectId": "proj_web_01",
+        "records": [
+          {
+            "identifier": "old1@example.com",
+            "provenance": {
+              "isExplicit": false,
+              "decisionTs": 1500000000,
+              "actorId": "legacy-import"
+            }
+          },
+          {
+            "identifier": "old2@example.com",
+            "provenance": {
+              "isExplicit": false,
+              "decisionTs": 1500000001,
+              "actorId": "legacy-import"
+            }
+          },
+          {
+            "identifier": "old3@example.com",
+            "provenance": {
+              "isExplicit": true,
+              "decisionTs": 1500000002,
+              "actorId": "legacy-import"
+            }
+          }
+        ],
+        "timestamp": 1760000104,
+        "nonce": "77777777777777777777777777777777",
+        "keyId": "k1",
+        "secretHex": "7c1e5a9d3b2f4e6a8c0d1f3e5a7b9c2d4e6f8a0b1c3d5e7f9a2b4c6d8e0f1a3b"
+      },
+      "expected": {
+        "userHashes": [
+          "e3d6d7ce4df1b4757673d088f9aa2d761ef5df546d67965b4caddefc13cd997b",
+          "b7e5e79105a5cfa683a174e50346a4a1f113dec99ceeccb2c4d0a0ae4468044a",
+          "f2282dcdd5a38417e3fec30ce47cbf21f74b10ee3990fbe27b254c528e5b31fb"
+        ],
+        "recordProvDigests": [
+          "d4c524f940e38656999c871adfc1d39a4cf4c9db4ef9e1d909cb6106e99c4fab",
+          "e208767c968b4524c46c12ab04e8e4ca0c385da1529296fd01de5571bc09e63d",
+          "bdd54a781e31fdbb0c53baf734641765d4a4367c6a8928b6257ca1a6bca01a54"
+        ],
+        "bulkSignSlot": "8cbf6929eb1b103d5af242b7f27f90b264f614d04ab907b5eca3047246f1703c",
+        "bulkProvSentinel": "fa410335bce8297f7f8bd99ca51b992a89c083858a7940a0e0139b824127d934",
+        "stringToSign": "cust_abc123:8cbf6929eb1b103d5af242b7f27f90b264f614d04ab907b5eca3047246f1703c:1760000104:77777777777777777777777777777777:fa410335bce8297f7f8bd99ca51b992a89c083858a7940a0e0139b824127d934",
+        "signature": "a43cfd743fa93f579e5ecc0035e83b5fa6e0f509a01407dc5e12124fb17a9a72"
+      }
+    }
+  ],
+  "hexStringKeyTrap": {
+    "name": "hex-string-key-must-not-match",
+    "input": {
+      "customerId": "cust_abc123",
+      "projectId": "proj_web_01",
+      "identifier": "user@example.com",
+      "timestamp": 1760000000,
+      "nonce": "00112233445566778899aabbccddeeff",
+      "keyId": "k1",
+      "secretHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "provenance": null
+    },
+    "expected": {
+      "stringToSign": "cust_abc123:28b7d3a022d86efa0f672aac75cfa7cf782a04c88046fb4f2fc5c724d7fbd8b5:1760000000:00112233445566778899aabbccddeeff:4de0e6fe888081209009953420b400306063e95f4b2738b53204fb36a88cedb9",
+      "signature": "d330c47aaa8854e28fe5fad20ded01acfe94b07617f0094d5749b5d905344674",
+      "wrongSignature": "8ab028fce6fba3eb32ba69228e7b52cdf89ced2c27b4c4ef4236c5479c241987"
+    }
+  }
+}

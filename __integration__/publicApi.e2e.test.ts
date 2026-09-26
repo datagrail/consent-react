@@ -7,6 +7,7 @@
  * consent-ID generation path (formerly backed by the ESM-only `uuid` package,
  * now by the in-package RFC 4122 v4 generator) end to end.
  */
+import { createHash } from 'crypto';
 import { NativeModules } from 'react-native';
 
 // Stubbed before importing src/index so the Universal Consent hash path resolves. The real
@@ -16,6 +17,10 @@ import { NativeModules } from 'react-native';
 const USER_HASH = '1fee132c298d615098190e3e75f9c7e05db20d6cff6398f686fcebc67d1d87a4';
 NativeModules.DataGrailConsentCrypto = {
   computeUserHash: () => Promise.resolve(USER_HASH),
+  // Bare SHA-256 the write signing path uses to build the provenance sub-digest. Node's SHA-256
+  // is the identical standard digest the native modules must produce.
+  sha256Hex: (input: string) =>
+    Promise.resolve(createHash('sha256').update(input, 'utf8').digest('hex')),
 };
 
 import {
@@ -336,8 +341,13 @@ describe('Public API — end to end', () => {
       const payload = getSignature.mock.calls[0][0];
       expect(payload.customerId).toBe('ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
       expect(payload.userHash).toBe(USER_HASH);
+      // The SDK sends no provenance, so stringToSign ends with the SHA-256 of the resolved-default
+      // provenance triple ("true", this timestamp, "") — the same digest the edge reconstructs.
+      const provDigest = createHash('sha256')
+        .update(`true\n${payload.timestamp}\n`, 'utf8')
+        .digest('hex');
       expect(payload.stringToSign).toBe(
-        `ac46d8ad-a67a-431f-a5d5-9e3eb922dae7:${USER_HASH}:${payload.timestamp}:${payload.nonce}`,
+        `ac46d8ad-a67a-431f-a5d5-9e3eb922dae7:${USER_HASH}:${payload.timestamp}:${payload.nonce}:${provDigest}`,
       );
       expect(writeInit.headers['X-DG-Nonce']).toBe(payload.nonce);
       expect(writeInit.headers['X-DG-Timestamp']).toBe(String(payload.timestamp));
