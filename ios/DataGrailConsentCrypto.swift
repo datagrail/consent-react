@@ -60,6 +60,25 @@ class DataGrailConsentCrypto: NSObject {
     return digest.map { String(format: "%02x", $0) }.joined()
   }
 
+  /// Bare `SHA-256(UTF-8(input))` as lowercase hex — NO normalization, unlike `computeUserHash`.
+  ///
+  /// Reuses the same CryptoKit `SHA256` path as the user hash so the two cannot drift. Used to
+  /// build the provenance sub-digest folded into the write signing string, which must be
+  /// byte-identical to the edge verifier and every other SDK.
+  static func sha256Hex(_ input: String) -> String {
+    let digest = SHA256.hash(data: Data(input.utf8))
+    return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  @objc
+  func sha256Hex(
+    _ input: String,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    resolve(DataGrailConsentCrypto.sha256Hex(input))
+  }
+
   @objc
   func computeUserHash(
     _ customerId: String,

@@ -10,6 +10,15 @@ jest.mock('../../src/universal/userHash', () => ({
     mockComputeUserHash(customerId, projectId, identifier),
 }));
 
+// Stand in for the native SHA-256 bridge with node's own SHA-256 (same standard digest) so the
+// write signing path — which now folds a provenance sub-digest into stringToSign — resolves in a
+// JS-only test environment instead of hitting the unlinked native module.
+jest.mock('../../src/universal/sha256', () => ({
+  sha256Hex: (input: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    Promise.resolve(require('crypto').createHash('sha256').update(input, 'utf8').digest('hex')),
+}));
+
 const mockReadTrackingSignal = jest.fn<string, []>();
 
 jest.mock('../../src/platform/trackingSignal', () => ({
