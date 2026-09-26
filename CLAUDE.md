@@ -104,7 +104,8 @@ Universal Consent (cross-device), gated on `universalConsent.enabled` in the con
 - `isUniversalConsentEnabled(): boolean`
 - `fetchUniversalConsent(identifier, apiKey, trackingSignal?): Promise<UniversalConsentRecord | null>` — inspect only; local state untouched
 - `rehydrateFromUniversalConsent(identifier, apiKey, trackingSignal?): Promise<boolean>` — fetch **and apply**; `false` on a miss
-- `setUserIdentifier(identifier, { apiKey, getSignature, trackingSignal? }): Promise<void>` — reads then writes
+- `setUserIdentifier(identifier, { apiKey, getSignature, trackingSignal? }): Promise<void>` — reads then (maybe) writes; binds the device to the user hash on success
+- `clearUserIdentifier(): void` — logout: clears the binding and returns local consent to neutral (non-destructive, no network; unlike `reset()`)
 
 Also exported: `requestTrackingAuthorization`/`getTrackingStatus` (ATT, `src/platform/att*.ts`),
 `getConsentPayloadForWebView`/`getConsentInjectionScript` (`src/webview/WebViewConsent.ts`), and
@@ -152,6 +153,14 @@ backend. Do not change any of these without changing all of them:
 - **`NetworkService` resolves on any HTTP status** (it only rejects on transport failure), so
   `UniversalConsentService` checks non-2xx itself. Without that, a 500's error body would be parsed
   as a consent record.
+- **Login attribution rule (TRUST-2902).** The device persists the bound user hash
+  (`BOUND_USER_HASH`, never the raw identifier), written only by `setUserIdentifier` after it
+  succeeds. "Explicit" = `hasUserConsented()` (not stored prefs, which `initialize()` seeds) AND
+  the device is not bound to a different hash. LOGIN (unbound or bound elsewhere): found → REPLACE
+  local (record's reconciled values; unmentioned categories = config default, essential on), never
+  write; found with no choice → neutral if explicit/bound-elsewhere state is stored, else no-op; miss + explicit → write the raw local choice; miss otherwise → no write (neutral if
+  bound elsewhere). RE-SYNC (bound to this hash): found + local change → write-through; miss →
+  write only an explicit choice. Config defaults are never seeded.
 - **`rehydrateFromUniversalConsent` must call `setUserConsented(true)`.** RN's `needsConsent()`
   gates on that flag rather than on preferences merely existing (`initialize()` auto-persists
   defaults), which differs from iOS/Android. Without it the banner still shows and the method

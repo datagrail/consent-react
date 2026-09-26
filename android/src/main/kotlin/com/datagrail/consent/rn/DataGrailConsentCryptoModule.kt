@@ -47,6 +47,17 @@ class DataGrailConsentCryptoModule(
         }
     }
 
+    /**
+     * Bare `SHA-256(UTF-8(input))` as lowercase hex — NO normalization, unlike [computeUserHash].
+     *
+     * Used to build the provenance sub-digest folded into the write signing string, which must be
+     * byte-identical to the edge verifier and every other SDK.
+     */
+    @ReactMethod
+    fun sha256Hex(input: String, promise: Promise) {
+        promise.resolve(Companion.sha256Hex(input))
+    }
+
     /** Thrown when the identifier is empty after normalization. */
     class InvalidIdentifierException(message: String) : IllegalArgumentException(message)
 
@@ -78,6 +89,15 @@ class DataGrailConsentCryptoModule(
             }
 
             val input = "$customerId:$projectId:$normalized"
+            return sha256Hex(input)
+        }
+
+        /**
+         * Bare `SHA-256(UTF-8(input))` as lowercase hex — NO normalization. Reuses the same
+         * `MessageDigest` path as the user hash so the two cannot drift.
+         */
+        @JvmStatic
+        fun sha256Hex(input: String): String {
             val hashBytes = MessageDigest.getInstance("SHA-256")
                 .digest(input.toByteArray(Charsets.UTF_8))
             return hashBytes.joinToString("") { "%02x".format(it) }

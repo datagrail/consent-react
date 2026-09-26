@@ -10,6 +10,15 @@ jest.mock('../../src/universal/userHash', () => ({
     mockComputeUserHash(customerId, projectId, identifier),
 }));
 
+// Stand in for the native SHA-256 bridge with node's own SHA-256 (same standard digest) so the
+// write signing path — which now folds a provenance sub-digest into stringToSign — resolves in a
+// JS-only test environment instead of hitting the unlinked native module.
+jest.mock('../../src/universal/sha256', () => ({
+  sha256Hex: (input: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    Promise.resolve(require('crypto').createHash('sha256').update(input, 'utf8').digest('hex')),
+}));
+
 const mockReadTrackingSignal = jest.fn<string, []>();
 
 jest.mock('../../src/platform/trackingSignal', () => ({
@@ -30,7 +39,10 @@ import {
   fetchUniversalConsent,
   rehydrateFromUniversalConsent,
   setUserIdentifier,
+  clearUserIdentifier,
+  getConfig,
 } from '../../src/ConsentManager';
+import { StorageService } from '../../src/storage/StorageService';
 import type { ConsentPreferences } from '../../src/types';
 
 const baseConfigJson = fs.readFileSync(
@@ -109,6 +121,24 @@ function found(overrides: Record<string, unknown> = {}) {
 }
 
 const notFound = () => response(200, JSON.stringify({ status: 'not_found' }));
+
+/** Bind the device to an identity, as a prior successful setUserIdentifier would (a re-sync). */
+function bindDeviceTo(hash: string) {
+  new StorageService().saveBoundUserHash(hash);
+}
+
+/** An explicit local choice with every known category, marketing as given. */
+function explicitChoice(marketing: boolean): ConsentPreferences {
+  return {
+    isCustomised: true,
+    cookieOptions: [
+      { gtmKey: 'dg-category-essential', isEnabled: true },
+      { gtmKey: 'dg-category-marketing', isEnabled: marketing },
+      { gtmKey: 'dg-category-performance', isEnabled: true },
+      { gtmKey: 'dg-category-functional', isEnabled: true },
+    ],
+  };
+}
 
 async function initUniversal() {
   await initialize({ configUrl: 'https://cdn.example.com/config.json' });
@@ -448,7 +478,9 @@ describe('ConsentManager — Universal Consent', () => {
       });
 
       // A found record exists and disagrees (marketing ON), but the write must still carry the
-      // user's LOCAL choice — read first, then write.
+      // user's LOCAL choice — read first, then write. Pre-bound: write-through of a local change
+      // over a found record is the RE-SYNC behavior (a login adopts the record instead).
+      bindDeviceTo(USER_HASH);
       const uidFetch = jest
         .fn()
         .mockResolvedValueOnce(found())
@@ -536,8 +568,15 @@ describe('ConsentManager — Universal Consent', () => {
       // The store holds raw choices and the server never merges, so suppressing here would
       // persist this device's transient ATT state as the user's choice — for every device on
       // their identifier. Suppression belongs to the read path.
-      const fetchMock = mockFetchSequence(universalConfigJson, notFound(), response(200, ''));
+      // An explicit local choice (only explicit choices are written on a miss).
+      const fetchMock = mockFetchSequence(
+        universalConfigJson,
+        response(200, ''),
+        notFound(),
+        response(200, ''),
+      );
       await initUniversal();
+      await savePreferences(explicitChoice(true));
 
       await setUserIdentifier('user@example.com', {
         apiKey: API_KEY,
@@ -545,21 +584,24 @@ describe('ConsentManager — Universal Consent', () => {
         trackingSignal: 'denied',
       });
 
-      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
-      // Every category the config knows about is written, not just the initially-enabled ones —
-      // `dg-category-mystery-category` comes from the consent layers rather than `initial`.
+      const body = JSON.parse((fetchMock.mock.calls[3][1] as { body: string }).body);
       expect(body.consent_preferences.cookieOptions).toEqual({
         'dg-category-essential': true,
         'dg-category-marketing': true,
         'dg-category-performance': true,
         'dg-category-functional': true,
-        'dg-category-mystery-category': false,
       });
     });
 
     it('writes the local state unchanged when no signal applies', async () => {
-      const fetchMock = mockFetchSequence(universalConfigJson, notFound(), response(200, ''));
+      const fetchMock = mockFetchSequence(
+        universalConfigJson,
+        response(200, ''),
+        notFound(),
+        response(200, ''),
+      );
       await initUniversal();
+      await savePreferences(explicitChoice(true));
 
       await setUserIdentifier('user@example.com', {
         apiKey: API_KEY,
@@ -567,7 +609,7 @@ describe('ConsentManager — Universal Consent', () => {
         trackingSignal: 'authorized',
       });
 
-      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
+      const body = JSON.parse((fetchMock.mock.calls[3][1] as { body: string }).body);
       expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
     });
 
@@ -585,7 +627,9 @@ describe('ConsentManager — Universal Consent', () => {
         ],
       });
 
-      // The stored record disagrees (marketing OFF) and this device's signal is denied.
+      // The stored record disagrees (marketing OFF) and this device's signal is denied. Pre-bound:
+      // this is the RE-SYNC write-through (a login adopts the record and writes nothing).
+      bindDeviceTo(USER_HASH);
       const uidFetch = jest
         .fn()
         .mockResolvedValueOnce(
@@ -616,6 +660,8 @@ describe('ConsentManager — Universal Consent', () => {
     it('write-throughs the local choice on a hit rather than re-POSTing the fetched record', async () => {
       // Local opt-out meets a found record that opted IN. The edge resolves cross-device
       // conflicts; the SDK's job is to sync THIS device's current choice, not echo the record.
+      // Pre-bound: a RE-SYNC, so the local change is post-login.
+      bindDeviceTo(USER_HASH);
       mockFetchSequence(universalConfigJson, response(200, ''));
       await initUniversal();
       await savePreferences({
@@ -641,8 +687,14 @@ describe('ConsentManager — Universal Consent', () => {
     it('never derives ccpa_optout from the device tracking signal', async () => {
       // The ad-tracking signal is narrower than a CCPA do-not-sell choice. Treating one as the
       // other would record a legal opt-out the user never made.
-      const fetchMock = mockFetchSequence(universalConfigJson, notFound(), response(200, ''));
+      const fetchMock = mockFetchSequence(
+        universalConfigJson,
+        response(200, ''),
+        notFound(),
+        response(200, ''),
+      );
       await initUniversal();
+      await savePreferences(explicitChoice(true));
 
       await setUserIdentifier('user@example.com', {
         apiKey: API_KEY,
@@ -650,7 +702,7 @@ describe('ConsentManager — Universal Consent', () => {
         trackingSignal: 'denied',
       });
 
-      const body = JSON.parse((fetchMock.mock.calls[2][1] as { body: string }).body);
+      const body = JSON.parse((fetchMock.mock.calls[3][1] as { body: string }).body);
       expect(body.ccpa_optout).toBe(false);
     });
 
@@ -668,12 +720,399 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     it('propagates a write failure', async () => {
-      mockFetchSequence(universalConfigJson, notFound(), response(403, 'bad signature'));
+      mockFetchSequence(
+        universalConfigJson,
+        response(200, ''),
+        notFound(),
+        response(403, 'bad signature'),
+      );
       await initUniversal();
+      await savePreferences(explicitChoice(true));
 
       await expect(
         setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature }),
       ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+    });
+  });
+
+  describe('identity binding and login attribution (TRUST-2902)', () => {
+    const OTHER_HASH = 'b'.repeat(64);
+
+    /** Same MMKV instance ConsentManager uses (the mock shares state by id). */
+    const deviceStorage = () => new StorageService();
+    const boundHash = () => deviceStorage().loadBoundUserHash();
+
+    function ucPosts(mock: jest.Mock) {
+      return mock.mock.calls.filter(
+        (call) =>
+          (call[1] as { method: string }).method === 'POST' &&
+          String(call[0]).includes('/universal_consent'),
+      );
+    }
+
+    /** Universal config with the banner on, so needsConsent() reflects the consented flag. */
+    const bannerConfigJson = JSON.stringify({
+      ...JSON.parse(universalConfigJson),
+      showBanner: true,
+    });
+
+    /** Initialize, then make an explicit local choice (marketing OFF) — pre-login history. */
+    async function initWithExplicitChoice() {
+      mockFetchSequence(bannerConfigJson, response(200, ''));
+      await initUniversal();
+      const neutral = persistedMap();
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: false },
+        ],
+      });
+      return neutral;
+    }
+
+    function stubUcFetch(...responses: ReturnType<typeof response>[]) {
+      const mock = jest.fn();
+      for (const r of responses) mock.mockResolvedValueOnce(r);
+      mock.mockResolvedValue(response(200, ''));
+      global.fetch = mock;
+      return mock;
+    }
+
+    describe('clearUserIdentifier', () => {
+      it('clears the binding and returns local reads to the fresh-install default', async () => {
+        const neutral = await initWithExplicitChoice();
+        stubUcFetch(notFound());
+        await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+        expect(boundHash()).toBe(USER_HASH);
+        expect(needsConsent()).toBe(false);
+
+        clearUserIdentifier();
+
+        expect(boundHash()).toBeNull();
+        expect(persistedMap()).toEqual(neutral);
+        expect(getPreferences()?.isCustomised).toBe(false);
+        expect(hasUserConsent()).toBe(false);
+        expect(needsConsent()).toBe(true);
+      });
+
+      it('is non-destructive: keeps unique id, config, pending queue; stays initialized; no network', async () => {
+        await initWithExplicitChoice();
+        const storage = deviceStorage();
+        const uniqueId = storage.getOrCreateUniqueId();
+        storage.savePendingEvents([{ queued: true }]);
+        const config = getConfig();
+        const fetchMock = stubUcFetch();
+
+        clearUserIdentifier();
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(storage.getOrCreateUniqueId()).toBe(uniqueId);
+        expect(storage.loadPendingEvents()).toEqual([{ queued: true }]);
+        expect(storage.loadConfigVersion()).toBe(config!.version);
+        expect(getConfig()).toBe(config);
+        expect(isUniversalConsentEnabled()).toBe(true);
+        // Still initialized: guarded reads do not throw.
+        expect(() => isCategoryEnabled('dg-category-essential')).not.toThrow();
+      });
+
+      it('fires the consent-changed listener with the now-effective defaults', async () => {
+        const neutral = await initWithExplicitChoice();
+        const listener = jest.fn();
+        onConsentChanged(listener);
+
+        clearUserIdentifier();
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        const emitted: Record<string, boolean> = {};
+        for (const opt of (listener.mock.calls[0][0] as ConsentPreferences).cookieOptions) {
+          emitted[opt.gtmKey] = opt.isEnabled;
+        }
+        expect(emitted).toEqual(neutral);
+      });
+
+      it('is idempotent and safe when unbound or before initialize', async () => {
+        expect(() => clearUserIdentifier()).not.toThrow();
+        await initWithExplicitChoice();
+        clearUserIdentifier();
+        clearUserIdentifier();
+        expect(boundHash()).toBeNull();
+        expect(needsConsent()).toBe(true);
+      });
+    });
+
+    it('login + record exists + explicit local choice: no POST, record adopted, bound', async () => {
+      await initWithExplicitChoice();
+      const fetchMock = stubUcFetch(found());
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(getSignature).not.toHaveBeenCalled();
+      // The record (marketing ON) replaced the pre-login choice (marketing OFF).
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(true);
+      expect(needsConsent()).toBe(false);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + subset record REPLACES local: an unmentioned category takes its config default', async () => {
+      mockFetchSequence(bannerConfigJson, response(200, ''));
+      await initUniversal();
+      const defaults = persistedMap();
+      // An explicit local choice that differs from the default on performance, which the record
+      // below does not mention.
+      expect(defaults['dg-category-performance']).toBe(true);
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: true },
+          { gtmKey: 'dg-category-performance', isEnabled: false },
+          { gtmKey: 'dg-category-functional', isEnabled: false },
+        ],
+      });
+      const fetchMock = stubUcFetch(
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+          },
+        }),
+      );
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      // Record-carried category: the record's value.
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      // Unmentioned categories: the config default, not the prior local value.
+      expect(isCategoryEnabled('dg-category-performance')).toBe(
+        defaults['dg-category-performance'],
+      );
+      expect(isCategoryEnabled('dg-category-functional')).toBe(defaults['dg-category-functional']);
+      expect(persistedMap()).toEqual({ ...defaults, 'dg-category-marketing': false });
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + found record with no consent choice + explicit local: neutral, no POST', async () => {
+      const neutral = await initWithExplicitChoice();
+      const fetchMock = stubUcFetch(found({ consent_preferences: null }));
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(persistedMap()).toEqual(neutral);
+      expect(hasUserConsent()).toBe(false);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + found record with no consent choice + neutral local: no-op, no listener, no POST', async () => {
+      const fetchMock = mockFetchSequence(
+        bannerConfigJson,
+        found({ consent_preferences: { isCustomised: true, cookieOptions: {} } }),
+      );
+      await initUniversal();
+      const before = getPreferences();
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(getPreferences()).toEqual(before);
+      expect(listener).not.toHaveBeenCalled();
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it("re-sync + subset record keeps today's adopt (no neutral fill)", async () => {
+      mockFetchSequence(
+        universalConfigJson,
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+          },
+        }),
+      );
+      await initUniversal();
+      bindDeviceTo(USER_HASH);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(persistedMap()).toEqual({
+        'dg-category-essential': true,
+        'dg-category-marketing': false,
+      });
+    });
+
+    it('login + record exists + no local choice: no POST, record adopted, bound', async () => {
+      const fetchMock = mockFetchSequence(
+        universalConfigJson,
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+          },
+        }),
+      );
+      await initUniversal();
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(hasUserConsent()).toBe(true);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + no record + explicit local choice: POSTs the raw local choice, bound', async () => {
+      await initWithExplicitChoice();
+      const fetchMock = stubUcFetch(notFound());
+
+      await setUserIdentifier('user@example.com', {
+        apiKey: API_KEY,
+        getSignature,
+        trackingSignal: 'denied',
+      });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      const body = JSON.parse((posts[0][1] as { body: string }).body);
+      expect(body.consent_preferences).toEqual({
+        isCustomised: true,
+        cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+      });
+      expect(hasUserConsent()).toBe(true);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('login + no record + defaults-only local: no POST, local unchanged, bound', async () => {
+      const fetchMock = mockFetchSequence(bannerConfigJson, notFound());
+      await initUniversal();
+      const before = getPreferences();
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(getSignature).not.toHaveBeenCalled();
+      expect(getPreferences()).toEqual(before);
+      expect(hasUserConsent()).toBe(false);
+      expect(needsConsent()).toBe(true);
+      expect(listener).not.toHaveBeenCalled();
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('already bound to this identity + miss + explicit choice: still syncs (sync-on-change)', async () => {
+      await initWithExplicitChoice();
+      deviceStorage().saveBoundUserHash(USER_HASH);
+      const fetchMock = stubUcFetch(notFound());
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      const body = JSON.parse((posts[0][1] as { body: string }).body);
+      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('bound to user A, setUserIdentifier(B) misses with A local state: no POST, local neutral', async () => {
+      mockComputeUserHash.mockImplementation((_c, _p, id) =>
+        Promise.resolve(id === 'b@example.com' ? OTHER_HASH : USER_HASH),
+      );
+      const neutral = await initWithExplicitChoice();
+      deviceStorage().saveBoundUserHash(USER_HASH);
+      const fetchMock = stubUcFetch(notFound());
+      const listener = jest.fn();
+      onConsentChanged(listener);
+
+      await setUserIdentifier('b@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(persistedMap()).toEqual(neutral);
+      expect(hasUserConsent()).toBe(false);
+      expect(needsConsent()).toBe(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(boundHash()).toBe(OTHER_HASH);
+    });
+
+    it('re-sync + record exists + local change: writes the local choice through', async () => {
+      await initWithExplicitChoice();
+      bindDeviceTo(USER_HASH);
+      const fetchMock = stubUcFetch(found());
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      const body = JSON.parse((posts[0][1] as { body: string }).body);
+      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('re-sync + no record + defaults-only local: writes nothing (defaults are never seeded)', async () => {
+      const fetchMock = mockFetchSequence(universalConfigJson, notFound());
+      await initUniversal();
+      bindDeviceTo(USER_HASH);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(boundHash()).toBe(USER_HASH);
+    });
+
+    it('leaves the binding unchanged on a read failure', async () => {
+      await initWithExplicitChoice();
+      deviceStorage().saveBoundUserHash(OTHER_HASH);
+      stubUcFetch(response(500, 'gateway error'));
+
+      await expect(
+        setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature }),
+      ).rejects.toBeDefined();
+
+      expect(boundHash()).toBe(OTHER_HASH);
+      // The local choice is untouched too.
+      expect(hasUserConsent()).toBe(true);
+    });
+
+    it('does not bind when the write fails, so a retry is still a transition', async () => {
+      await initWithExplicitChoice();
+      stubUcFetch(notFound(), response(403, 'bad signature'));
+
+      await expect(
+        setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature }),
+      ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+
+      expect(boundHash()).toBeNull();
+    });
+
+    it('reset() clears the binding', async () => {
+      mockFetchSequence(universalConfigJson, found(), response(200, ''));
+      await initUniversal();
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+      expect(boundHash()).toBe(USER_HASH);
+
+      reset();
+
+      expect(boundHash()).toBeNull();
+    });
+
+    it('rehydrate alone does not bind', async () => {
+      mockFetchSequence(universalConfigJson, found());
+      await initUniversal();
+
+      await rehydrateFromUniversalConsent('user@example.com', API_KEY);
+
+      expect(boundHash()).toBeNull();
     });
   });
 

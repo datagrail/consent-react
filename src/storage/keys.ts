@@ -14,6 +14,10 @@ export const STORAGE_KEYS = {
   // acceptAll/rejectAll) — distinct from auto-persisted defaults written at init
   // so needsConsent() isn't fooled by init's "store defaults for isCategoryEnabled" step.
   USER_CONSENTED: 'datagrail_consent_user_consented',
+  // The Universal Consent user hash (never the raw identifier) of the identity this device is
+  // currently bound to. Written only by setUserIdentifier; cleared by clearUserIdentifier and by
+  // reset() (clearAll). Tells a login TRANSITION apart from a re-sync while already logged in.
+  BOUND_USER_HASH: 'datagrail_consent_bound_user_hash',
 } as const;
 
 export const CURRENT_SCHEMA_VERSION = 2;
