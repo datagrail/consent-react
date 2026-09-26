@@ -19,3 +19,30 @@ jobs:
       - run: npm run lint
       - run: npm run test -- --coverage
       - run: npm run test:integration
+
+  # The JS suite mocks the native DataGrailConsentCrypto bridge out entirely, so the Swift/Kotlin
+  # SHA-256 that actually runs on device is unverified by `test`. These jobs compile and run the
+  # React-free crypto core against the authoritative cross-SDK golden vectors, so the native
+  # provenance digest (sha256Hex) and user hash cannot silently drift from the edge verifier.
+  # Both are fast pure-unit builds: no emulator, no simulator, no CocoaPods, no react-android.
+  android-crypto-core:
+    name: Android crypto core (JVM golden-vector test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Run crypto-core golden-vector tests
+        working-directory: native/android-crypto-core
+        run: ./gradlew test --no-daemon
+
+  ios-crypto-core:
+    name: iOS crypto core (swift test golden-vector)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Run crypto-core golden-vector tests
+        working-directory: ios
+        run: swift test

@@ -1,11 +1,10 @@
 import Foundation
-import CryptoKit
 import React
 
-/// Computes the Universal Consent user hash natively.
+/// React Native bridge for the Universal Consent native crypto primitives.
 ///
-/// The whole hash is computed here rather than exposing a bare SHA-256 primitive to JS, for two
-/// reasons. First, the identifier must be NFC-normalized, and Hermes does not reliably provide
+/// The whole hash is computed natively rather than exposing normalization to JS, for two reasons.
+/// First, the identifier must be NFC-normalized, and Hermes does not reliably provide
 /// `String.prototype.normalize` (it depends on how the app's Intl support is configured), so
 /// normalizing in JS would work on some apps and silently produce a different hash on others.
 /// Second, the hash is a cross-SDK contract: the same person must produce the same 64-char hex
@@ -13,6 +12,10 @@ import React
 /// derivation on the same Foundation/CryptoKit path the iOS SDK uses means this wrapper cannot
 /// drift from it. A hash computed differently splits one user across two consent records and
 /// their consent stops following them.
+///
+/// The actual hashing lives in the React-free `DataGrailConsentCryptoCore`, which this class
+/// delegates to, so the cross-SDK golden vectors can be asserted by `swift test` with no React
+/// context and the shipped code stays identical to the tested code.
 @objc(DataGrailConsentCrypto)
 class DataGrailConsentCrypto: NSObject {
 
@@ -21,17 +24,12 @@ class DataGrailConsentCrypto: NSObject {
     return false
   }
 
-  /// Thrown when the identifier is empty after normalization.
-  enum CryptoError: Error, Equatable {
-    case emptyIdentifier
-  }
+  /// Thrown when the identifier is empty after normalization. Kept as a member alias so callers
+  /// and existing tests can refer to `DataGrailConsentCrypto.CryptoError`.
+  typealias CryptoError = DataGrailConsentCryptoCore.CryptoError
 
   /// Pure `SHA-256("{customerId}:{projectId}:{normalizedIdentifier}")` as lowercase hex.
-  ///
-  /// Normalization is Unicode NFC → trim → lowercase, in that order. This is the canonical
-  /// contract (TRUST-1843) shared by every SDK — do not deviate. Extracted from the bridge method
-  /// so the cross-SDK golden vector can be asserted by an XCTest with no React context — the one
-  /// invariant whose violation is silent (it splits a user across two consent records).
+  /// Delegates to `DataGrailConsentCryptoCore` — see there for the normalization contract.
   ///
   /// - Throws: `CryptoError.emptyIdentifier` when the identifier is empty after normalization.
   static func computeUserHash(
@@ -39,35 +37,17 @@ class DataGrailConsentCrypto: NSObject {
     projectId: String,
     identifier: String
   ) throws -> String {
-    // `precomposedStringWithCanonicalMapping` is NFC. Lowercasing is pinned to the POSIX locale
-    // so a Turkish-locale device does not map "I" to the dotless "ı" and hash the same
-    // identifier differently than every other device.
-    let normalized = identifier
-      .precomposedStringWithCanonicalMapping
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-      .lowercased(with: Locale(identifier: "en_US_POSIX"))
-
-    // Reject an identifier that is empty AFTER normalizing. SHA-256 over a bare
-    // "{customerId}:{projectId}:" prefix is a valid-looking hash that every empty-or-whitespace
-    // caller in the tenant shares, collapsing unrelated users onto one consent record. Checking
-    // the raw string is not enough — "   " trims away to nothing.
-    if normalized.isEmpty {
-      throw CryptoError.emptyIdentifier
-    }
-
-    let input = "\(customerId):\(projectId):\(normalized)"
-    let digest = SHA256.hash(data: Data(input.utf8))
-    return digest.map { String(format: "%02x", $0) }.joined()
+    return try DataGrailConsentCryptoCore.computeUserHash(
+      customerId: customerId,
+      projectId: projectId,
+      identifier: identifier
+    )
   }
 
   /// Bare `SHA-256(UTF-8(input))` as lowercase hex — NO normalization, unlike `computeUserHash`.
-  ///
-  /// Reuses the same CryptoKit `SHA256` path as the user hash so the two cannot drift. Used to
-  /// build the provenance sub-digest folded into the write signing string, which must be
-  /// byte-identical to the edge verifier and every other SDK.
+  /// Delegates to `DataGrailConsentCryptoCore`.
   static func sha256Hex(_ input: String) -> String {
-    let digest = SHA256.hash(data: Data(input.utf8))
-    return digest.map { String(format: "%02x", $0) }.joined()
+    return DataGrailConsentCryptoCore.sha256Hex(input)
   }
 
   @objc
