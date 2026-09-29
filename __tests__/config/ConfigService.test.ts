@@ -230,6 +230,17 @@ describe('ConfigService', () => {
       });
     }
 
+    function mockFetchStatus(status: number, body = '') {
+      const mockHeaders = new Map<string, string>();
+      global.fetch = jest.fn().mockResolvedValue({
+        status,
+        text: () => Promise.resolve(body),
+        headers: {
+          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+        },
+      });
+    }
+
     it('should fetch and parse config on first call', async () => {
       mockFetchSuccess();
 
@@ -280,17 +291,72 @@ describe('ConfigService', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
-    it('should throw on non-2xx response when no cache exists', async () => {
-      const mockHeaders = new Map<string, string>();
-      global.fetch = jest.fn().mockResolvedValue({
-        status: 404,
-        text: () => Promise.resolve('Not Found'),
-        headers: {
-          forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
-        },
+    it.each([400, 401, 403, 404, 410, 422])(
+      'rejects with CONFIG_NOT_PUBLISHED on a %i when no cache exists',
+      async (status) => {
+        mockFetchStatus(status, 'Not Found');
+
+        await expect(configService.fetchConfig(configUrl)).rejects.toMatchObject({
+          code: 'CONFIG_NOT_PUBLISHED',
+        });
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each([408, 429])(
+      'rejects with NETWORK_ERROR (not CONFIG_NOT_PUBLISHED) on a %i when no cache exists',
+      async (status) => {
+        mockFetchStatus(status);
+
+        await expect(configService.fetchConfig(configUrl)).rejects.toMatchObject({
+          code: 'NETWORK_ERROR',
+        });
+      },
+    );
+
+    describe('with retry backoff', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
       });
 
-      await expect(configService.fetchConfig(configUrl)).rejects.toThrow(ConsentError);
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('rejects with NETWORK_ERROR on a 5xx after retries are exhausted', async () => {
+        mockFetchStatus(503);
+
+        const expectation = expect(configService.fetchConfig(configUrl)).rejects.toMatchObject({
+          code: 'NETWORK_ERROR',
+        });
+        await jest.runAllTimersAsync();
+        await expectation;
+        expect(global.fetch).toHaveBeenCalledTimes(5);
+      });
+
+      it('rejects with NETWORK_ERROR when fetch itself fails', async () => {
+        global.fetch = jest.fn().mockRejectedValue(new TypeError('Network request failed'));
+
+        const expectation = expect(configService.fetchConfig(configUrl)).rejects.toMatchObject({
+          code: 'NETWORK_ERROR',
+        });
+        await jest.runAllTimersAsync();
+        await expectation;
+      });
+    });
+
+    it('serves stale cache and does not reject when background revalidation gets a 404', async () => {
+      const config = ConfigService.parseConfig(testConfigJson);
+      const staleTimestamp = Date.now() - 400_000;
+      storage.saveConfigCache(config, staleTimestamp);
+      mockFetchStatus(404);
+
+      const result = await configService.fetchConfig(configUrl);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(result.version).toBe(config.version);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(storage.loadConfigCache()).toEqual({ config, timestamp: staleTimestamp });
     });
   });
 });

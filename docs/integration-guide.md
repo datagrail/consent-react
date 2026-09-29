@@ -51,6 +51,7 @@ import { initialize, needsConsent } from '@datagrail.io/react-native-consent';
 function App() {
   const [ready, setReady] = useState(false);
   const [showConsentBanner, setShowConsentBanner] = useState(false);
+  const [consentFailed, setConsentFailed] = useState(false);
 
   useEffect(() => {
     async function boot() {
@@ -60,21 +61,27 @@ function App() {
       setShowConsentBanner(needsConsent());
       setReady(true);
     }
-    boot().catch(console.error);
+    boot().catch((error) => {
+      // No cached config: the SDK stays uninitialized. Treat non-essential categories as
+      // disabled and render the app anyway.
+      console.error(error);
+      setConsentFailed(true);
+      setReady(true);
+    });
   }, []);
 
   if (!ready) return null; // or splash screen
 
   return (
     <>
-      {showConsentBanner && <ConsentBannerScreen />}
+      {showConsentBanner && !consentFailed && <ConsentBannerScreen />}
       <MainApp />
     </>
   );
 }
 ```
 
-> **Important:** All other SDK methods throw `ConsentError` with code `NOT_INITIALIZED` if called before `initialize()` resolves.
+> **Important:** All other SDK methods throw `ConsentError` with code `NOT_INITIALIZED` if called before `initialize()` resolves. If `initialize()` rejects (for example with `CONFIG_NOT_PUBLISHED` when the config URL returns a definite 4xx — any 4xx other than the transient 408/429 — on a fresh install), call no SDK method other than `initialize()` until a later call succeeds.
 
 ## 5. Show the Consent Banner
 

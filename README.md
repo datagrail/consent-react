@@ -417,7 +417,7 @@ If no `trackingDescription` is provided, a default message is used. Run `npx exp
 
 The SDK is designed for unreliable network conditions:
 
-- **Config caching** — Remote configuration is cached in MMKV. If a network fetch fails, the SDK falls back to the cached config.
+- **Config caching** — The last successfully fetched config is cached in MMKV. If a later fetch fails, the SDK keeps serving the cached copy. On a fresh install (or after `reset()`) there is no cache, so a failed fetch rejects `initialize()` with a `ConsentError`: `CONFIG_NOT_PUBLISHED` when the config URL returns a definite 4xx (any 4xx other than 408 or 429), `NETWORK_ERROR` or `TIMEOUT` for connectivity, 5xx, and the transient 408/429 responses.
 - **Offline queue** — When `savePreferences`, `acceptAll`, or `rejectAll` cannot reach the backend, the request is queued in persistent storage.
 - **Exponential backoff** — Queued requests are retried with exponential backoff when connectivity returns.
 - **Manual retry** — Call `retryPendingRequests()` to explicitly drain the offline queue (e.g., when your app detects connectivity restored).
@@ -433,7 +433,7 @@ The SDK is driven by a remote JSON configuration hosted at your `configUrl`. Thi
 - **Policy** — Consent policy rules and initial category states
 - **GPC/DNT** — Whether to respect Global Privacy Control and Do Not Track signals
 
-The config is fetched on `initialize()` and cached locally. Subsequent launches use the cache while fetching a fresh copy in the background. A version change in the config triggers reconsent (`needsConsent()` returns `true`).
+The config is fetched on `initialize()` and cached locally. Within the cache TTL (5 minutes) the cached config is used as-is. After that, the cached copy is returned immediately and a fresh copy is fetched in the background for the next launch. A failed background fetch is silent and the cached config stays in use. A version change in the config triggers reconsent (`needsConsent()` returns `true`).
 
 ### Config URL format
 
@@ -451,10 +451,26 @@ Ensure `initialize()` has completed (awaited) before calling any other SDK metho
 
 ```typescript
 // App.tsx
+import { initialize, ConsentError } from '@datagrail.io/react-native-consent';
+
+const [consentStatus, setConsentStatus] = useState<'loading' | 'ready' | 'failed'>('loading');
+
 useEffect(() => {
-  initialize({ configUrl: '...' }).catch(console.error);
+  initialize({ configUrl: '...' })
+    .then(() => setConsentStatus('ready'))
+    .catch((error: unknown) => {
+      // With no cached config the SDK stays uninitialized: treat every non-essential
+      // category as disabled. CONFIG_NOT_PUBLISHED means the configUrl is wrong or unpublished.
+      // NETWORK_ERROR/TIMEOUT are transient, so call initialize() again later.
+      if (error instanceof ConsentError && error.code === 'CONFIG_NOT_PUBLISHED') {
+        reportError(error); // your app's error reporting
+      }
+      setConsentStatus('failed');
+    });
 }, []);
 ```
+
+Don't call other SDK methods while `consentStatus` is not `'ready'`.
 
 ### MMKV build errors on iOS
 
