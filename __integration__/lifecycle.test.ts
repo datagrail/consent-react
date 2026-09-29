@@ -36,8 +36,7 @@ function mockFetchSuccess(data: string = testConfigJson) {
     status: 200,
     text: () => Promise.resolve(data),
     headers: {
-      forEach: (cb: (v: string, k: string) => void) =>
-        mockHeaders.forEach((v, k) => cb(v, k)),
+      forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
     },
   });
 }
@@ -89,8 +88,7 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
       status: 200,
       text: () => Promise.resolve(''),
       headers: {
-        forEach: (cb: (v: string, k: string) => void) =>
-          mockHeaders.forEach((v, k) => cb(v, k)),
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
       },
     });
 
@@ -118,7 +116,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await acceptAll();
@@ -138,7 +138,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await rejectAll();
@@ -161,7 +163,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     const prefs: ConsentPreferences = {
@@ -199,7 +203,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     const result = await retryPendingRequests();
@@ -219,7 +225,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await savePreferences({
@@ -244,7 +252,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await trackBannerShown();
@@ -252,7 +262,8 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const url = (global.fetch as jest.Mock).mock.calls[0][0] as string;
     expect(url).toContain('save_open');
-    expect(url).toContain('dg_customer_id');
+    expect(url).toContain('customer=');
+    expect(url).not.toContain('dg_customer_id');
     expect(url).toContain('consent_id');
     expect(url).toContain('config_version');
     expect(url).toContain('timestamp');
@@ -273,7 +284,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
     await savePreferences({
       isCustomised: true,
@@ -328,7 +341,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await trackBannerShown();
@@ -343,7 +358,9 @@ describe('Consent SDK Integration - Full Lifecycle', () => {
     global.fetch = jest.fn().mockResolvedValue({
       status: 200,
       text: () => Promise.resolve(''),
-      headers: { forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)) },
+      headers: {
+        forEach: (cb: (v: string, k: string) => void) => mockHeaders.forEach((v, k) => cb(v, k)),
+      },
     });
 
     await trackBannerShown();
