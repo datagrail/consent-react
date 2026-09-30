@@ -327,14 +327,10 @@ export async function setCcpaOptout(
     return;
   }
 
-  const rawMap: Record<string, boolean> = {};
-  for (const option of localChoice.cookieOptions) {
-    rawMap[option.gtmKey] = option.isEnabled;
-  }
   await universalConsentService!.save(
     currentConfig!,
     sync.identifier,
-    { isCustomised: localChoice.isCustomised, cookieOptions: rawMap },
+    { isCustomised: localChoice.isCustomised, cookieOptions: toRawCookieMap(localChoice) },
     sync.apiKey,
     optedOut,
     sync.getSignature,
@@ -694,6 +690,12 @@ export async function setUserIdentifier(
     if (boundToOther) {
       returnToNeutral();
     }
+    // RE-SYNC + FOUND record with no consent choice (signal-only / empty preferences): the
+    // rehydrate applied nothing, so adopt the record's CCPA opt-out here under the same syncOptout
+    // gate a re-sync with a usable choice uses.
+    if (recordFound && isResync && currentConfig!.universalConsent?.syncOptout === true) {
+      storageService!.saveCcpaOptout(recordCcpaOptout === true);
+    }
     storageService!.saveBoundUserHash(userHash);
     return;
   }
@@ -702,14 +704,9 @@ export async function setUserIdentifier(
   // explicit choice attached to a missing record. NEVER `rawFromRecord`, which would discard the
   // choice made on this device. The choice was captured BEFORE rehydrate, so it is RAW and no
   // device signal leaks into the store.
-  const rawMap: Record<string, boolean> = {};
-  for (const option of localChoice!.cookieOptions) {
-    rawMap[option.gtmKey] = option.isEnabled;
-  }
-
   const universalPrefs: UniversalConsentPreferences = {
     isCustomised: localChoice!.isCustomised,
-    cookieOptions: rawMap,
+    cookieOptions: toRawCookieMap(localChoice!),
   };
 
   // The local CCPA opt-out rides the write with the categories. A re-sync rehydrate above replaced
@@ -730,6 +727,15 @@ export async function setUserIdentifier(
   // Bind only after the write succeeds: a failed write must not bind, so a retry is still
   // recognised as a login and re-evaluated from scratch.
   storageService!.saveBoundUserHash(userHash);
+}
+
+/** The `{ gtmKey: isEnabled }` map a Universal Consent write carries, from local preferences. */
+function toRawCookieMap(prefs: ConsentPreferences): Record<string, boolean> {
+  const map: Record<string, boolean> = {};
+  for (const option of prefs.cookieOptions) {
+    map[option.gtmKey] = option.isEnabled;
+  }
+  return map;
 }
 
 export function hasUserConsent(): boolean {

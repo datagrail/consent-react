@@ -1393,6 +1393,27 @@ describe('ConsentManager — Universal Consent', () => {
         expect(ucPosts(fetchMock)).toHaveLength(0);
         expect(getCcpaOptout()).toBe(true);
       });
+
+      it.each([
+        ['null preferences', true, null],
+        ['null preferences', false, null],
+        ['an empty map', true, { isCustomised: true, cookieOptions: {} }],
+        ['an empty map', false, { isCustomised: true, cookieOptions: {} }],
+      ])(
+        're-sync + found record with %s, sync_optout %s: adopts the record flag only with the gate on',
+        async (_label, gate, consentPreferences) => {
+          const fetchMock = await initThenStub(
+            configWithGate(gate),
+            found({ consent_preferences: consentPreferences, ccpa_optout: true }),
+          );
+          bindDeviceTo(USER_HASH);
+
+          await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+          expect(ucPosts(fetchMock)).toHaveLength(0);
+          expect(getCcpaOptout()).toBe(gate);
+        },
+      );
     });
 
     describe('login (TRUST-2902 rule)', () => {
