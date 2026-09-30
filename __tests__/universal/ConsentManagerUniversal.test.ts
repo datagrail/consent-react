@@ -510,6 +510,27 @@ describe('ConsentManager — Universal Consent', () => {
       // The answered choice is persisted, so the banner does not re-prompt.
       expect(hasUserConsent()).toBe(true);
       expect(needsConsent()).toBe(false);
+      // Essential-only: essential reads on, never a blanket opt-out; everything else stays off.
+      expect(persistedMap()).toEqual({ 'dg-category-essential': true });
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+    });
+
+    it('re-sync + present but empty found record: essential-only, essential stays on', async () => {
+      mockFetchSequence(
+        universalConfigJson,
+        found({ consent_preferences: { isCustomised: true, cookieOptions: {} } }),
+      );
+      await initUniversal();
+      bindDeviceTo(USER_HASH);
+
+      await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+      expect(hasUserConsent()).toBe(true);
+      expect(needsConsent()).toBe(false);
+      expect(persistedMap()).toEqual({ 'dg-category-essential': true });
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
     });
 
     it('writes nothing when a found record has absent consent preferences (signal-only)', async () => {
