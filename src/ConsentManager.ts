@@ -408,14 +408,19 @@ async function rehydrateReturningRawPreferences(
   );
 
   // On a login the record REPLACES local state: start from the neutral defaults (never the prior
-  // local value) and overlay what the record carries. Essential categories stay on.
-  let cookieOptions = reconciled;
+  // local value) and overlay what the record carries. A fresh map either way: when no signal
+  // applies `reconciled` IS the raw map handed back for the write, so it must not be mutated.
+  const cookieOptions: Record<string, boolean> = {};
   if (fillFromNeutral) {
-    cookieOptions = {};
     for (const option of ConsentResolver.getDefaults(currentConfig!).cookieOptions) {
-      cookieOptions[option.gtmKey] = option.isEnabled || essentialKeys.has(option.gtmKey);
+      cookieOptions[option.gtmKey] = option.isEnabled;
     }
-    Object.assign(cookieOptions, reconciled);
+  }
+  Object.assign(cookieOptions, reconciled);
+  // Essential categories are always on locally, on login and re-sync alike, even when the record
+  // omits them or carries them as `false` (malformed data from another writer).
+  for (const key of essentialKeys) {
+    cookieOptions[key] = true;
   }
 
   const preferences: ConsentPreferences = {

@@ -952,6 +952,40 @@ describe('ConsentManager — Universal Consent', () => {
       });
     });
 
+    it.each([
+      ['login', false],
+      ['re-sync', true],
+    ])(
+      '%s + record carrying essential false or omitting it: essential stays on locally',
+      async (_label, resync) => {
+        mockFetchSequence(
+          universalConfigJson,
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: { 'dg-category-essential': false, 'dg-category-marketing': true },
+            },
+          }),
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: { 'dg-category-marketing': true },
+            },
+          }),
+        );
+        await initUniversal();
+        if (resync) bindDeviceTo(USER_HASH);
+
+        await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+        expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(true);
+
+        // Second call is a re-sync against a record that omits essential entirely.
+        await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+        expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      },
+    );
+
     it('login + record exists + no local choice: no POST, record adopted, bound', async () => {
       const fetchMock = mockFetchSequence(
         universalConfigJson,
