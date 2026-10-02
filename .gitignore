@@ -26,6 +26,15 @@ local.properties
 Pods/
 ios/build/
 build/
+
+# SwiftPM (ios/Package.swift crypto-core test package)
+.build/
+.swiftpm/
+Package.resolved
+
+# Standalone JVM crypto-core test harness
+native/android-crypto-core/.gradle/
+native/android-crypto-core/build/
 *.xcuserstate
 xcuserdata/
 DerivedData/

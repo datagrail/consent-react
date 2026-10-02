@@ -58,6 +58,28 @@ export class StorageService {
     return this.storage.getBoolean(STORAGE_KEYS.USER_CONSENTED) ?? false;
   }
 
+  /**
+   * Remove the explicit consent choice (stored preferences + the user-consented flag) so reads fall
+   * back to the config defaults, as on a fresh install. Leaves the unique id, config version,
+   * config cache, pending queue and identity binding in place.
+   */
+  clearUserChoice(): void {
+    this.storage.delete(STORAGE_KEYS.PREFERENCES);
+    this.storage.delete(STORAGE_KEYS.USER_CONSENTED);
+  }
+
+  saveBoundUserHash(userHash: string): void {
+    this.storage.set(STORAGE_KEYS.BOUND_USER_HASH, userHash);
+  }
+
+  loadBoundUserHash(): string | null {
+    return this.storage.getString(STORAGE_KEYS.BOUND_USER_HASH) ?? null;
+  }
+
+  clearBoundUserHash(): void {
+    this.storage.delete(STORAGE_KEYS.BOUND_USER_HASH);
+  }
+
   saveConfigCache(config: ConsentConfig, timestamp: number): void {
     this.storage.set(STORAGE_KEYS.CONFIG_CACHE, JSON.stringify(config));
     this.storage.set(STORAGE_KEYS.CONFIG_CACHE_TIMESTAMP, timestamp.toString());

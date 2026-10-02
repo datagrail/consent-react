@@ -12,9 +12,11 @@
  */
 export interface UniversalConsentSignaturePayload {
   /**
-   * The canonical string to HMAC, exactly `"{customerId}:{userHash}:{timestamp}:{nonce}"`.
-   * Sign THIS string — do not reassemble it from the fields below, or a formatting drift will
-   * silently produce rejected writes.
+   * The canonical string to HMAC, exactly
+   * `"{customerId}:{userHash}:{timestamp}:{nonce}:{provDigest}"`, where `provDigest` is a SHA-256
+   * sub-digest binding the write's provenance (this SDK sends none, so it is the digest of the
+   * resolved-default triple). Sign THIS string verbatim — do not reassemble it from the fields
+   * below, or a formatting drift will silently produce rejected writes.
    */
   stringToSign: string;
   /** The DataGrail customer id (tenant). */

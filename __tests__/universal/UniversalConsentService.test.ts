@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -7,6 +8,28 @@ const mockComputeUserHash = jest.fn<Promise<string>, [string, string, string]>()
 jest.mock('../../src/universal/userHash', () => ({
   computeUserHash: (customerId: string, projectId: string, identifier: string) =>
     mockComputeUserHash(customerId, projectId, identifier),
+}));
+
+// Stand in for the native SHA-256 bridge with node's own SHA-256. Both compute the identical
+// standard digest, so this is a faithful oracle: it lets the tests assert that the SERVICE feeds
+// the correct provenance pre-image to the primitive and folds the resulting digest into the right
+// slot of stringToSign, byte-for-byte against the cross-SDK signing-vectors corpus.
+const mockSha256Hex = jest.fn<Promise<string>, [string]>();
+
+jest.mock('../../src/universal/sha256', () => ({
+  sha256Hex: (input: string) => mockSha256Hex(input),
+}));
+
+const nodeSha256Hex = (input: string): string =>
+  crypto.createHash('sha256').update(input, 'utf8').digest('hex');
+
+// Let the corpus test pin the per-write nonce to a vector's value while every other test still
+// gets a fresh, valid 32-hex nonce. Wraps the real module so only generateNonceHex is swappable.
+const mockGenerateNonceHex = jest.fn<string, []>();
+
+jest.mock('../../src/storage/uuid', () => ({
+  ...jest.requireActual('../../src/storage/uuid'),
+  generateNonceHex: () => mockGenerateNonceHex(),
 }));
 
 import { UniversalConsentService } from '../../src/universal/UniversalConsentService';
@@ -44,6 +67,8 @@ describe('UniversalConsentService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockComputeUserHash.mockResolvedValue(USER_HASH);
+    mockSha256Hex.mockImplementation(async (input: string) => nodeSha256Hex(input));
+    mockGenerateNonceHex.mockImplementation(() => crypto.randomBytes(16).toString('hex'));
     config = ConfigService.parseConfig(universalConfigJson);
     service = new UniversalConsentService(new NetworkService());
   });
@@ -280,7 +305,7 @@ describe('UniversalConsentService', () => {
       expect(first['X-DG-Nonce']).not.toBe(second['X-DG-Nonce']);
     });
 
-    it('hands the provider a payload whose stringToSign is exactly {cid}:{uh}:{ts}:{nonce}', async () => {
+    it('hands the provider a payload whose stringToSign is {cid}:{uh}:{ts}:{nonce}:{provDigest}', async () => {
       mockFetch(200, '');
       const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
 
@@ -292,10 +317,66 @@ describe('UniversalConsentService', () => {
       expect(payload.userHash).toBe(USER_HASH);
       expect(payload.nonce).toMatch(HEX_32);
       expect(typeof payload.timestamp).toBe('number');
+
+      // The SDK sends no provenance, so it signs the resolved-default triple: is_explicit "true",
+      // decision_ts = this write's timestamp, actor_id "". The pre-image is fed to the native
+      // SHA-256 verbatim, "\n"-delimited.
+      expect(mockSha256Hex).toHaveBeenCalledWith(`true\n${payload.timestamp}\n`);
+      const provDigest = nodeSha256Hex(`true\n${payload.timestamp}\n`);
+
       // The canonical string the edge will recompute — built by the SDK, not the callback.
       expect(payload.stringToSign).toBe(
-        `ac46d8ad-a67a-431f-a5d5-9e3eb922dae7:${USER_HASH}:${payload.timestamp}:${payload.nonce}`,
+        `ac46d8ad-a67a-431f-a5d5-9e3eb922dae7:${USER_HASH}:${payload.timestamp}:${payload.nonce}:${provDigest}`,
       );
+    });
+
+    // Contract test against the authoritative cross-SDK corpus (vendored verbatim from
+    // consent-backend server-sdks/node/fixtures). For every no-provenance single-write vector, the
+    // edge resolves the default provenance triple and expects exactly this stringToSign; the client
+    // must build the byte-identical string from the same customerId/userHash/timestamp/nonce.
+    it('builds the exact corpus stringToSign for every no-provenance single-write vector', async () => {
+      const corpus = JSON.parse(
+        fs.readFileSync(path.join(__dirname, '../fixtures/signing-vectors.json'), 'utf-8'),
+      ) as {
+        single: {
+          input: {
+            customerId: string;
+            timestamp: number;
+            nonce: string;
+            provenance: unknown;
+          };
+          expected: { stringToSign: string };
+        }[];
+      };
+
+      const noProvVectors = corpus.single.filter((v) => v.input.provenance === null);
+      expect(noProvVectors.length).toBeGreaterThan(0);
+
+      for (const vector of noProvVectors) {
+        const [, corpusUserHash] = vector.expected.stringToSign.split(':');
+
+        mockFetch(200, '');
+        mockComputeUserHash.mockResolvedValue(corpusUserHash);
+        mockGenerateNonceHex.mockReturnValue(vector.input.nonce);
+        const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(vector.input.timestamp * 1000);
+
+        const vectorConfig = { ...config, dgCustomerId: vector.input.customerId };
+        const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
+
+        await service.save(
+          vectorConfig,
+          'user@example.com',
+          prefs,
+          'api-key-123',
+          false,
+          getSignature,
+        );
+
+        const payload = getSignature.mock.calls[0][0];
+        expect(payload.stringToSign).toBe(vector.expected.stringToSign);
+
+        nowSpy.mockRestore();
+      }
     });
 
     it('performs an API-key-only write when no signature provider is given', async () => {

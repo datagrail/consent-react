@@ -59,6 +59,7 @@ export {
   fetchUniversalConsent,
   rehydrateFromUniversalConsent,
   setUserIdentifier,
+  clearUserIdentifier,
 } from './ConsentManager';
 
 export { requestTrackingAuthorization, getTrackingStatus } from './platform/att';

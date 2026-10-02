@@ -3,6 +3,7 @@ import { ConsentError } from '../types';
 import type { NetworkService } from '../network/NetworkService';
 import { generateNonceHex } from '../storage/uuid';
 import { computeUserHash } from './userHash';
+import { sha256Hex } from './sha256';
 import type {
   SignatureProvider,
   UniversalConsentPreferences,
@@ -89,6 +90,19 @@ export class UniversalConsentService {
   }
 
   /**
+   * The Universal Consent user hash for `identifier` under this config — the same value `get` and
+   * `save` put on the wire. Lets callers key device-local state (the identity binding) by hash
+   * without ever persisting the raw identifier.
+   *
+   * @throws ConsentError `VALIDATION_ERROR` for a missing `consentProjectId` or an identifier that
+   *   is empty after normalization; `NATIVE_ERROR` when the hashing bridge fails.
+   */
+  async userHash(config: ConsentConfig, identifier: string): Promise<string> {
+    const projectId = UniversalConsentService.requireProjectId(config);
+    return computeUserHash(config.dgCustomerId, projectId, identifier);
+  }
+
+  /**
    * Read a user's Universal Consent record for cross-device rehydration.
    *
    * `GET /universal_consent?customer_id=..&user_hash=..` with an `X-DG-Api-Key` header. Reads
@@ -164,8 +178,9 @@ export class UniversalConsentService {
    * Write a user's Universal Consent preferences for cross-device retrieval.
    *
    * `POST /universal_consent`. The SDK mints the `timestamp` (unix seconds) and a fresh per-write
-   * `nonce` (32 lowercase hex), assembles the canonical `"{customerId}:{userHash}:{timestamp}:{nonce}"`
-   * string-to-sign, and hands it to the customer's `getSignature` provider (which calls the
+   * `nonce` (32 lowercase hex), assembles the canonical
+   * `"{customerId}:{userHash}:{timestamp}:{nonce}:{provDigest}"` string-to-sign, and hands it to
+   * the customer's `getSignature` provider (which calls the
    * customer's own backend). The SDK does NOT compute the HMAC — the shared secret never touches
    * the device. It attaches `X-DG-Signature` / `X-DG-Key-Id` from the callback and the SDK-owned
    * `X-DG-Timestamp` / `X-DG-Nonce`, alongside `X-DG-Api-Key`.
@@ -196,7 +211,17 @@ export class UniversalConsentService {
       // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
       const timestamp = Math.floor(Date.now() / 1000);
       const nonce = generateNonceHex();
-      const stringToSign = `${config.dgCustomerId}:${userHash}:${timestamp}:${nonce}`;
+
+      // Bind the write's provenance (is_explicit, decision_ts, actor_id) into the signed string so
+      // an intermediary cannot rewrite it on an otherwise-valid request. This SDK sends no
+      // provenance in the body, so it signs the RESOLVED-DEFAULT triple the edge synthesizes for a
+      // provenance-free write: is_explicit → "true", decision_ts → this same X-DG-Timestamp,
+      // actor_id → "". `\n` (U+000A) delimits the fields; actor_id is terminal so an embedded
+      // delimiter cannot forge the digest. Must stay byte-identical to the edge/other SDKs — the
+      // signing-vectors corpus is the enforcement.
+      const provInput = `true\n${timestamp}\n`;
+      const provDigest = await sha256Hex(provInput);
+      const stringToSign = `${config.dgCustomerId}:${userHash}:${timestamp}:${nonce}:${provDigest}`;
 
       // Ask the customer's backend to sign. The secret never leaves their backend. Bound the wait
       // on this customer-controlled callback: it hits the customer's own backend, so a hung or

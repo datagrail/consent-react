@@ -96,6 +96,7 @@ Cross-device consent. Available when `universalConsent.enabled` is set on your D
 | `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
 | `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
 | `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
+| `clearUserIdentifier`           | —                                                                        | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
 
 ### ATT Methods (iOS)
 
@@ -370,6 +371,32 @@ await setUserIdentifier(user.email, { apiKey: DG_API_KEY, getSignature });
 ```
 
 To inspect a record without changing local state, use `fetchUniversalConsent` instead.
+
+### 4. Clear the identifier on logout
+
+```typescript
+import { clearUserIdentifier } from '@datagrail.io/react-native-consent';
+
+clearUserIdentifier();
+```
+
+This returns the device to neutral: the stored choice is removed, reads return your config's defaults, the banner shows again, and `onConsentChanged` listeners fire with the defaults. It is not `reset()`: nothing goes over the network, the user's cross-device record is left as it is, and the device ID, cached config and offline queue are kept. The SDK stays initialized.
+
+### Shared devices and pre-login choices
+
+The SDK remembers which identity the device is bound to (by hash only). A `setUserIdentifier` call for a different identity than the bound one, or on an unbound device, is a **login**:
+
+- **The user has a stored record:** the record wins and nothing is written, even if a choice was made on the device before login. That pre-login choice is dropped. The record replaces local consent rather than merging with it: each category it carries takes the record's value, and every other category takes your config default (essential stays on). If the record holds no consent choice, local consent returns to the default when it held a choice or another user's state, and is left alone otherwise.
+- **No stored record, and the user made an explicit choice on this device** (banner, `savePreferences`, `acceptAll`, `rejectAll`) while it was not bound to someone else: the choice is written as the user's first record.
+- **No stored record and no explicit choice:** nothing is written. Config defaults are never saved as a choice, and local consent stays as it is. If the device was still bound to a different user, local consent returns to the default so that user's state does not carry over.
+
+Once the device is bound, later `setUserIdentifier` calls for the same user are a **re-sync**. A local change is written through over a stored record as before, and a missing record gets the explicit local choice. With no explicit choice nothing is written.
+
+Some things the SDK cannot detect:
+
+- **Logout.** It only knows when you tell it, so call `clearUserIdentifier()` whenever the user logs out.
+- **Who made a pre-login choice.** On a login that finds no record, the SDK writes an explicit choice made on an unbound device, by design, even though an earlier user of a shared device may have made it. There is no shared-device or shared-account heuristic.
+- **Two people sharing one account.**
 
 ### How signals are applied
 
