@@ -44,6 +44,7 @@ import {
   setCcpaOptout,
   getCcpaOptout,
   acceptAll,
+  decideIdentityBind,
 } from '../../src/ConsentManager';
 import { StorageService } from '../../src/storage/StorageService';
 import type { ConsentPreferences } from '../../src/types';
@@ -1253,6 +1254,235 @@ describe('ConsentManager — Universal Consent', () => {
       await rehydrateFromUniversalConsent('user@example.com', API_KEY);
 
       expect(boundHash()).toBeNull();
+    });
+
+    // TRUST-3075: the binding write is now applied in exactly one place, driven by the pure
+    // `decideIdentityBind` decision, instead of being hand-placed at each success exit. These assert
+    // the invariant that refactor is meant to make structural: `saveBoundUserHash` runs exactly ONCE
+    // on every success path and NEVER on a throwing/failure path.
+    describe('binds exactly once on success, never on failure (TRUST-3075)', () => {
+      /** A found record whose consent_preferences block is absent (signal-only). */
+      const signalOnly = () => found({ consent_preferences: null });
+
+      type Scenario = {
+        name: string;
+        /** Arrange config, network stubs and any pre-existing binding; resolves before the spy. */
+        arrange: () => Promise<void>;
+        /** The hash the device should be bound to after the call (null = unchanged/unbound). */
+        boundAfter: string | null;
+        /** Whether the call rejects (a read or write failure). */
+        throws?: boolean;
+      };
+
+      const successes: Scenario[] = [
+        {
+          name: 'login + miss + explicit choice (write path)',
+          arrange: async () => {
+            await initWithExplicitChoice();
+            stubUcFetch(notFound());
+          },
+          boundAfter: USER_HASH,
+        },
+        {
+          name: 'login + found usable record (adopt, no write)',
+          arrange: async () => {
+            mockFetchSequence(universalConfigJson, found());
+            await initUniversal();
+          },
+          boundAfter: USER_HASH,
+        },
+        {
+          name: 'login + found signal-only record (neutral + bind, no write)',
+          arrange: async () => {
+            await initWithExplicitChoice();
+            stubUcFetch(signalOnly());
+          },
+          boundAfter: USER_HASH,
+        },
+        {
+          name: 'login + miss + defaults-only local (no write)',
+          arrange: async () => {
+            mockFetchSequence(bannerConfigJson, notFound());
+            await initUniversal();
+          },
+          boundAfter: USER_HASH,
+        },
+        {
+          name: 're-sync + found + local change (write-through)',
+          arrange: async () => {
+            await initWithExplicitChoice();
+            bindDeviceTo(USER_HASH);
+            stubUcFetch(found());
+          },
+          boundAfter: USER_HASH,
+        },
+        {
+          name: 're-sync + found + no local change (adopt, no write)',
+          arrange: async () => {
+            mockFetchSequence(universalConfigJson, found());
+            await initUniversal();
+            bindDeviceTo(USER_HASH);
+          },
+          boundAfter: USER_HASH,
+        },
+        {
+          name: 're-sync + miss + explicit choice (write)',
+          arrange: async () => {
+            await initWithExplicitChoice();
+            bindDeviceTo(USER_HASH);
+            stubUcFetch(notFound());
+          },
+          boundAfter: USER_HASH,
+        },
+      ];
+
+      const failures: Scenario[] = [
+        {
+          name: 'read failure (5xx on the GET)',
+          arrange: async () => {
+            await initWithExplicitChoice();
+            bindDeviceTo(OTHER_HASH);
+            stubUcFetch(response(500, 'gateway error'));
+          },
+          boundAfter: OTHER_HASH,
+          throws: true,
+        },
+        {
+          name: 'write failure (4xx on the POST)',
+          arrange: async () => {
+            await initWithExplicitChoice();
+            stubUcFetch(notFound(), response(403, 'bad signature'));
+          },
+          boundAfter: null,
+          throws: true,
+        },
+      ];
+
+      it.each(successes)('binds exactly once: $name', async ({ arrange, boundAfter }) => {
+        await arrange();
+        const bindSpy = jest.spyOn(StorageService.prototype, 'saveBoundUserHash');
+
+        await setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature });
+
+        expect(bindSpy).toHaveBeenCalledTimes(1);
+        expect(bindSpy).toHaveBeenCalledWith(USER_HASH);
+        expect(boundHash()).toBe(boundAfter);
+        bindSpy.mockRestore();
+      });
+
+      it.each(failures)('never binds: $name', async ({ arrange, boundAfter }) => {
+        await arrange();
+        const bindSpy = jest.spyOn(StorageService.prototype, 'saveBoundUserHash');
+
+        await expect(
+          setUserIdentifier('user@example.com', { apiKey: API_KEY, getSignature }),
+        ).rejects.toBeDefined();
+
+        expect(bindSpy).not.toHaveBeenCalled();
+        expect(boundHash()).toBe(boundAfter);
+        bindSpy.mockRestore();
+      });
+    });
+  });
+
+  // The pure decision behind the one-place binding (TRUST-3075). Exercised directly so every branch
+  // of the TRUST-2902 rule maps to a tagged action with no I/O — the integration tests above prove
+  // the executor binds once per decision.
+  describe('decideIdentityBind (TRUST-3075)', () => {
+    const base = {
+      recordFound: false,
+      hasUsablePrefs: false,
+      isResync: false,
+      boundToOther: false,
+      hadConsentedFlag: false,
+      hasExplicitChoice: false,
+      recordCcpaOptout: null as boolean | null,
+      syncOptout: false,
+    };
+
+    it('login + found signal-only record: bindOnly, neutral when explicit/other state, adopts record CCPA', () => {
+      expect(
+        decideIdentityBind({
+          ...base,
+          recordFound: true,
+          hadConsentedFlag: true,
+          hasExplicitChoice: true,
+          recordCcpaOptout: true,
+        }),
+      ).toEqual({ kind: 'bindOnly', returnToNeutral: true, adoptCcpaFromRecord: true });
+
+      // Nothing explicit and not bound elsewhere: no neutral reset, but the record's CCPA still wins.
+      expect(decideIdentityBind({ ...base, recordFound: true, recordCcpaOptout: false })).toEqual({
+        kind: 'bindOnly',
+        returnToNeutral: false,
+        adoptCcpaFromRecord: false,
+      });
+    });
+
+    it('found usable record: adopt (bindOnly) on login or a no-change re-sync, write on a re-sync change', () => {
+      expect(decideIdentityBind({ ...base, hasUsablePrefs: true, recordFound: true })).toEqual({
+        kind: 'bindOnly',
+        returnToNeutral: false,
+        adoptCcpaFromRecord: null,
+      });
+      expect(
+        decideIdentityBind({ ...base, hasUsablePrefs: true, recordFound: true, isResync: true }),
+      ).toEqual({ kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null });
+      expect(
+        decideIdentityBind({
+          ...base,
+          hasUsablePrefs: true,
+          recordFound: true,
+          isResync: true,
+          hasExplicitChoice: true,
+        }),
+      ).toEqual({ kind: 'write' });
+    });
+
+    it('no usable prefs + nothing explicit: bindOnly, neutral only when bound elsewhere', () => {
+      expect(decideIdentityBind({ ...base })).toEqual({
+        kind: 'bindOnly',
+        returnToNeutral: false,
+        adoptCcpaFromRecord: null,
+      });
+      expect(decideIdentityBind({ ...base, boundToOther: true })).toEqual({
+        kind: 'bindOnly',
+        returnToNeutral: true,
+        adoptCcpaFromRecord: null,
+      });
+    });
+
+    it('re-sync + found signal-only record: adopts the record CCPA only when the syncOptout gate is on', () => {
+      expect(
+        decideIdentityBind({
+          ...base,
+          recordFound: true,
+          isResync: true,
+          syncOptout: true,
+          recordCcpaOptout: true,
+        }),
+      ).toEqual({ kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: true });
+      expect(
+        decideIdentityBind({
+          ...base,
+          recordFound: true,
+          isResync: true,
+          syncOptout: false,
+          recordCcpaOptout: true,
+        }),
+      ).toEqual({ kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null });
+    });
+
+    it('miss (or re-sync signal-only) + explicit local choice: write', () => {
+      expect(decideIdentityBind({ ...base, hasExplicitChoice: true })).toEqual({ kind: 'write' });
+      expect(
+        decideIdentityBind({
+          ...base,
+          recordFound: true,
+          isResync: true,
+          hasExplicitChoice: true,
+        }),
+      ).toEqual({ kind: 'write' });
     });
   });
 
