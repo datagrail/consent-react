@@ -90,6 +90,29 @@ describe('ConsentManager', () => {
       ).rejects.toMatchObject({ code: 'CONFIG_NOT_PUBLISHED' });
       expect(() => needsConsent()).toThrow(expect.objectContaining({ code: 'NOT_INITIALIZED' }));
     });
+
+    it('passes onConfigError through to background config revalidation', async () => {
+      mockFetchSuccess();
+      await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+      // Past the 5-minute cache TTL, so the next initialize serves the cache and refetches.
+      const later = Date.now() + 10 * 60 * 1000;
+      jest.spyOn(Date, 'now').mockReturnValue(later);
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 404,
+        text: () => Promise.resolve('Not Found'),
+        headers: { forEach: () => {} },
+      });
+      const onConfigError = jest.fn();
+
+      await initialize({ configUrl: 'https://cdn.example.com/config.json', onConfigError });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(getConfig()!.version).toBe('cc959465-747d-4c81-8bc1-5dcd34dc3756');
+      expect(onConfigError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'CONFIG_NOT_PUBLISHED' }),
+      );
+    });
   });
 
   describe('needsConsent', () => {

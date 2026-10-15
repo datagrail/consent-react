@@ -1,4 +1,4 @@
-import type { ConsentConfig } from '../types';
+import type { ConsentConfig, ConsentError } from '../types';
 
 /**
  * Raw JSON shape from the config endpoint — uses snake_case.
@@ -116,6 +116,8 @@ export interface ConfigServiceOptions {
   timeout?: number;
   /** Cache TTL in ms (default: 300000 = 5 min) */
   cacheTtl?: number;
+  /** Receives background-revalidation failures. See DataGrailConfig.onConfigError. */
+  onConfigError?: (error: ConsentError) => void;
 }
 
 export type ParsedConfig = ConsentConfig;

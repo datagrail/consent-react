@@ -54,7 +54,11 @@ export async function initialize(config: DataGrailConfig): Promise<void> {
   offlineQueue = new OfflineQueue(storageService, networkService);
 
   // 4. Create ConfigService and fetch config
-  configService = new ConfigService(networkService, storageService);
+  configService = new ConfigService(
+    networkService,
+    storageService,
+    config.onConfigError ? { onConfigError: config.onConfigError } : {},
+  );
   universalConsentService = new UniversalConsentService(networkService);
   currentConfig = await configService.fetchConfig(config.configUrl);
 

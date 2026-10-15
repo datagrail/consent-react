@@ -92,9 +92,23 @@ export class ConfigService {
   }
 
   private revalidateInBackground(configUrl: string): void {
-    // Fire and forget — errors are silently swallowed
-    this.fetchAndCache(configUrl).catch(() => {
-      // Intentionally swallowed — stale cache is already being served
+    // The stale cache is already being served, so a failure here only goes to the optional
+    // onConfigError callback. Nothing is rethrown: this promise has no awaiter.
+    this.fetchAndCache(configUrl).catch((error: unknown) => {
+      const onConfigError = this.options.onConfigError;
+      if (!onConfigError) {
+        return;
+      }
+
+      const consentError =
+        error instanceof ConsentError
+          ? error
+          : new ConsentError('NETWORK_ERROR', `Config refresh failed: ${String(error)}`);
+      try {
+        onConfigError(consentError);
+      } catch {
+        // A throwing callback must not become an unhandled rejection in the host app.
+      }
     });
   }
 
