@@ -463,20 +463,20 @@ The SDK is driven by a remote JSON configuration hosted at your `configUrl`. Thi
 
 The config is fetched on `initialize()` and cached locally. Within the cache TTL (5 minutes) the cached config is used as-is. After that, the cached copy is returned immediately and a fresh copy is fetched in the background for the next launch. A failed background fetch keeps the cached config in use. To see these failures, pass `onConfigError` to `initialize()`; it receives a `ConsentError` with the same codes as a failed initial fetch (`CONFIG_NOT_PUBLISHED`, `NETWORK_ERROR`, `TIMEOUT`, `PARSE_ERROR`):
 
-````typescript
+```typescript
 await initialize({
   configUrl: 'https://cdn.datagrail.io/your-customer-id/config.json',
   onConfigError: (error) => console.warn(`Config refresh failed: ${error.code}`),
 });
-``` A version change in the config triggers reconsent (`needsConsent()` returns `true`).
+```
+
+A version change in the config triggers reconsent (`needsConsent()` returns `true`).
 
 ### Config URL format
 
-````
-
+```
 https://cdn.datagrail.io/<customer-id>/config.json
-
-````
+```
 
 Contact your DataGrail account team to obtain your config URL.
 
@@ -505,7 +505,7 @@ useEffect(() => {
       setConsentStatus('failed');
     });
 }, []);
-````
+```
 
 Don't call other SDK methods while `consentStatus` is not `'ready'`.
 
