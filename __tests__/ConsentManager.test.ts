@@ -113,6 +113,26 @@ describe('ConsentManager', () => {
         expect.objectContaining({ code: 'CONFIG_NOT_PUBLISHED' }),
       );
     });
+
+    it('does not call onConfigError after reset() runs before the background refresh settles', async () => {
+      mockFetchSuccess();
+      await initialize({ configUrl: 'https://cdn.example.com/config.json' });
+
+      const later = Date.now() + 10 * 60 * 1000;
+      jest.spyOn(Date, 'now').mockReturnValue(later);
+      global.fetch = jest.fn().mockResolvedValue({
+        status: 404,
+        text: () => Promise.resolve('Not Found'),
+        headers: { forEach: () => {} },
+      });
+      const onConfigError = jest.fn();
+
+      await initialize({ configUrl: 'https://cdn.example.com/config.json', onConfigError });
+      reset();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(onConfigError).not.toHaveBeenCalled();
+    });
   });
 
   describe('needsConsent', () => {

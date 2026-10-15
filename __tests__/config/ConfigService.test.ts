@@ -395,6 +395,31 @@ describe('ConfigService', () => {
         );
       });
 
+      it('reports valid JSON with the wrong shape as PARSE_ERROR', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchSuccess('{}');
+
+        await service.fetchConfig(configUrl);
+        await flush();
+
+        expect(onConfigError).toHaveBeenCalledWith(
+          expect.objectContaining({ code: 'PARSE_ERROR' }),
+        );
+      });
+
+      it('does not call back after dispose()', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchStatus(404);
+
+        await service.fetchConfig(configUrl);
+        service.dispose();
+        await flush();
+
+        expect(onConfigError).not.toHaveBeenCalled();
+      });
+
       it('does not call back on a successful revalidation', async () => {
         const onConfigError = jest.fn();
         const service = serviceWithStaleCache(onConfigError);
@@ -424,6 +449,25 @@ describe('ConfigService', () => {
         try {
           const service = serviceWithStaleCache(() => {
             throw new Error('host app bug');
+          });
+          mockFetchStatus(404);
+
+          await service.fetchConfig(configUrl);
+          await flush();
+          await flush();
+
+          expect(unhandled).not.toHaveBeenCalled();
+        } finally {
+          process.off('unhandledRejection', unhandled);
+        }
+      });
+
+      it('contains an async callback that rejects', async () => {
+        const unhandled = jest.fn();
+        process.on('unhandledRejection', unhandled);
+        try {
+          const service = serviceWithStaleCache(async () => {
+            throw new Error('reporter offline');
           });
           mockFetchStatus(404);
 
