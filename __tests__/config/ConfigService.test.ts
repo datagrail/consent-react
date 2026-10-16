@@ -358,5 +358,128 @@ describe('ConfigService', () => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
       expect(storage.loadConfigCache()).toEqual({ config, timestamp: staleTimestamp });
     });
+
+    describe('onConfigError', () => {
+      function serviceWithStaleCache(onConfigError: (error: ConsentError) => void) {
+        const service = new ConfigService(network, storage, { cacheTtl: 300_000, onConfigError });
+        storage.saveConfigCache(ConfigService.parseConfig(testConfigJson), Date.now() - 400_000);
+        return service;
+      }
+
+      const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+      it('reports a background-revalidation 404 as CONFIG_NOT_PUBLISHED and still serves the cache', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchStatus(404);
+
+        const result = await service.fetchConfig(configUrl);
+        await flush();
+
+        expect(result.version).toBe('cc959465-747d-4c81-8bc1-5dcd34dc3756');
+        expect(onConfigError).toHaveBeenCalledTimes(1);
+        expect(onConfigError.mock.calls[0][0]).toBeInstanceOf(ConsentError);
+        expect(onConfigError.mock.calls[0][0]).toMatchObject({ code: 'CONFIG_NOT_PUBLISHED' });
+      });
+
+      it('reports an unparseable background response as PARSE_ERROR', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchSuccess('not json');
+
+        await service.fetchConfig(configUrl);
+        await flush();
+
+        expect(onConfigError).toHaveBeenCalledWith(
+          expect.objectContaining({ code: 'PARSE_ERROR' }),
+        );
+      });
+
+      it('reports valid JSON with the wrong shape as PARSE_ERROR', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchSuccess('{}');
+
+        await service.fetchConfig(configUrl);
+        await flush();
+
+        expect(onConfigError).toHaveBeenCalledWith(
+          expect.objectContaining({ code: 'PARSE_ERROR' }),
+        );
+      });
+
+      it('does not call back after dispose()', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchStatus(404);
+
+        await service.fetchConfig(configUrl);
+        service.dispose();
+        await flush();
+
+        expect(onConfigError).not.toHaveBeenCalled();
+      });
+
+      it('does not call back on a successful revalidation', async () => {
+        const onConfigError = jest.fn();
+        const service = serviceWithStaleCache(onConfigError);
+        mockFetchSuccess();
+
+        await service.fetchConfig(configUrl);
+        await flush();
+
+        expect(global.fetch).toHaveBeenCalledTimes(1);
+        expect(onConfigError).not.toHaveBeenCalled();
+      });
+
+      it('does not call back when the initial fetch fails, since initialize() rejects instead', async () => {
+        const onConfigError = jest.fn();
+        const service = new ConfigService(network, storage, { cacheTtl: 300_000, onConfigError });
+        mockFetchStatus(404);
+
+        await expect(service.fetchConfig(configUrl)).rejects.toMatchObject({
+          code: 'CONFIG_NOT_PUBLISHED',
+        });
+        expect(onConfigError).not.toHaveBeenCalled();
+      });
+
+      it('contains a callback that throws', async () => {
+        const unhandled = jest.fn();
+        process.on('unhandledRejection', unhandled);
+        try {
+          const service = serviceWithStaleCache(() => {
+            throw new Error('host app bug');
+          });
+          mockFetchStatus(404);
+
+          await service.fetchConfig(configUrl);
+          await flush();
+          await flush();
+
+          expect(unhandled).not.toHaveBeenCalled();
+        } finally {
+          process.off('unhandledRejection', unhandled);
+        }
+      });
+
+      it('contains an async callback that rejects', async () => {
+        const unhandled = jest.fn();
+        process.on('unhandledRejection', unhandled);
+        try {
+          const service = serviceWithStaleCache(async () => {
+            throw new Error('reporter offline');
+          });
+          mockFetchStatus(404);
+
+          await service.fetchConfig(configUrl);
+          await flush();
+          await flush();
+
+          expect(unhandled).not.toHaveBeenCalled();
+        } finally {
+          process.off('unhandledRejection', unhandled);
+        }
+      });
+    });
   });
 });

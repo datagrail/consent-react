@@ -46,6 +46,9 @@ export async function initialize(config: DataGrailConfig): Promise<void> {
     throw new ConsentError('INVALID_CONFIGURATION', 'configUrl must be a valid HTTPS URL');
   }
 
+  // A previous instance's background refresh must not report into this session.
+  configService?.dispose();
+
   // 2. Create StorageService
   storageService = new StorageService();
 
@@ -54,7 +57,11 @@ export async function initialize(config: DataGrailConfig): Promise<void> {
   offlineQueue = new OfflineQueue(storageService, networkService);
 
   // 4. Create ConfigService and fetch config
-  configService = new ConfigService(networkService, storageService);
+  configService = new ConfigService(
+    networkService,
+    storageService,
+    config.onConfigError ? { onConfigError: config.onConfigError } : {},
+  );
   universalConsentService = new UniversalConsentService(networkService);
   currentConfig = await configService.fetchConfig(config.configUrl);
 
@@ -215,6 +222,8 @@ export function reset(): void {
     // the same MMKV instance).
     storageService.clearAll();
   }
+  configService?.dispose();
+  configService = null;
   currentConfig = null;
   universalConsentService = null;
   initialized = false;
