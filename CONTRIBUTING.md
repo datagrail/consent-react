@@ -4,7 +4,7 @@ Thank you for your interest in contributing! This document covers how to set up 
 
 ## Prerequisites
 
-- **Node.js** 18+ (LTS recommended)
+- **Node.js** 22+ (LTS recommended)
 - **Watchman** (for React Native file watching)
 - **iOS development**: Xcode 15+, CocoaPods
 - **Android development**: Android Studio, JDK 17, Android SDK 34
