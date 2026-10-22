@@ -46,3 +46,21 @@ jobs:
       - name: Run crypto-core golden-vector tests
         working-directory: ios
         run: swift test
+
+  # Stable-named gate for branch protection. Require only `CI passed` there, so a Node matrix bump
+  # does not need a settings change. `if: always()` keeps this job from being skipped (GitHub
+  # treats a skipped required check as passing) when a dependency fails, and the jq check accepts
+  # only `success`, so cancelled or skipped jobs do not count as green.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [test, android-crypto-core, ios-crypto-core]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify all required jobs succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          echo "$NEEDS" | jq -e 'all(.[]; .result == "success")' > /dev/null
