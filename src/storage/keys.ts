@@ -33,6 +33,12 @@ export const STORAGE_KEYS = {
   // ATT prompt), overwritten with the record's time by a Universal Consent adopt, and cleared with
   // the choice (clearUserIdentifier / neutral reset; reset() wipes it). Absent = unknown.
   DECISION_TS: 'datagrail_consent_decision_ts',
+  // The RAW (not signal-reconciled) category map of the Universal Consent record that the stored
+  // preferences were adopted from. Local state holds the reconciled view, so a write-through that
+  // re-sends an adopted choice must send this instead, or a device-local suppression (ATT, the
+  // record's GPC) would be stored cross-device as a denial. Present only while the stored
+  // preferences are still that adopt: an explicit save, the neutral reset and reset() remove it.
+  ADOPTED_RAW_CHOICE: 'datagrail_consent_adopted_raw_choice',
 } as const;
 
 export const CURRENT_SCHEMA_VERSION = 2;

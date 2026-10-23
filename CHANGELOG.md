@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Otherwise nothing is written. If the device was bound to another user, local consent returns to neutral.
 - A miss no longer seeds a record from config defaults, on login or re-sync. Re-sync write-through over a found record is unchanged.
 - **Behavior change (TRUST-2591):** Universal Consent writes now send `ccpa_optout` from the user's stored choice (`setCcpaOptout`), gated by `universalConsent.sync_optout`, instead of always `false`. A found record's `ccpa_optout` is adopted into the local flag: on login it always replaces a pre-login value; on a re-sync only when `sync_optout` is on (with the gate off the record never carries the choice). `clearUserIdentifier()` returns the flag to `false` and `reset()` wipes it. Records written earlier are adopted as they are.
+- A Universal Consent write that re-sends an adopted record (a `setCcpaOptout` write-through, or a re-sync) now sends the record's raw categories, not the locally signal-suppressed view, so a denied ATT or the record's GPC is never stored cross-device as the user's denial. A `setCcpaOptout` write-through is also dropped when the device's binding changes while it computes the user hash (TRUST-2591)
+- A login that finds an essential-only record (present but empty category map) keeps every optional category off, instead of filling them with their config defaults (TRUST-2961)
 
 ### Fixed
 

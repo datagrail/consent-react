@@ -148,6 +148,8 @@ export async function savePreferences(prefs: ConsentPreferences): Promise<void> 
   // A real choice, made now (TRUST-3225): the stale-re-sync guard compares this against a found
   // record's updated_at, and every Universal Consent write sends it as decision_ts.
   storageService!.saveDecisionTs();
+  // An explicit choice made here, so the stored preferences are no longer a Universal Consent adopt.
+  storageService!.clearAdoptedRawChoice();
 
   // Emit event
   eventEmitter.emit(prefs);
@@ -331,6 +333,12 @@ export async function setCcpaOptout(
     return;
   }
   const userHash = await universalConsentService!.userHash(currentConfig!, sync.identifier);
+  // The hash is computed natively, so a logout (and a next visitor's choice) can land while it is in
+  // flight. Re-check the binding after the await: local state read below must still belong to the
+  // identity bound when this call started, or the next visitor's choice would be written to it.
+  if (storageService!.loadBoundUserHash() !== boundHash) {
+    return;
+  }
   const localChoice = storageService!.loadPreferences();
   if (userHash !== boundHash || !storageService!.hasUserConsented() || localChoice === null) {
     return;
@@ -341,7 +349,9 @@ export async function setCcpaOptout(
   await universalConsentService!.save(
     currentConfig!,
     sync.identifier,
-    { isCustomised: localChoice.isCustomised, cookieOptions: toRawCookieMap(localChoice) },
+    // The RAW choice: when local state is still an adopted record's signal-reconciled view, re-sending
+    // it would store a device-local suppression (ATT, GPC) as the user's denial on every device.
+    { isCustomised: localChoice.isCustomised, cookieOptions: rawLocalChoice(localChoice) },
     apiKey,
     optedOut,
     sync.getSignature,
@@ -542,10 +552,13 @@ async function rehydrateReturningRawPreferences(
   // On a login the record REPLACES local state: start from the neutral defaults (never the prior
   // local value) and overlay what the record carries. A fresh map either way: when no signal
   // applies `reconciled` IS the raw map handed back for the write, so it must not be mutated.
+  // An EMPTY answered map is an essential-only choice (TRUST-2961): no optional category takes its
+  // config default, or a login would enable categories a re-sync of the same record leaves off.
   const cookieOptions: Record<string, boolean> = {};
   if (fillFromNeutral) {
+    const essentialOnly = Object.keys(rawCookieOptions).length === 0;
     for (const option of ConsentResolver.getDefaults(currentConfig!).cookieOptions) {
-      cookieOptions[option.gtmKey] = option.isEnabled;
+      cookieOptions[option.gtmKey] = essentialOnly ? false : option.isEnabled;
     }
   }
   Object.assign(cookieOptions, reconciled);
@@ -566,6 +579,9 @@ async function rehydrateReturningRawPreferences(
   };
 
   storageService!.savePreferences(preferences);
+  // The stored preferences are the reconciled view; remember the raw choice they came from, so a
+  // later write-through that re-sends this adopt sends what the user chose, not the suppression.
+  storageService!.saveAdoptedRawChoice(rawCookieOptions);
   // Stamp the CURRENT config version, not the record's. needsConsent() compares the stored
   // version against the running config, so carrying a stale version over from the writing
   // device would re-prompt immediately and undo the rehydration we just did.
@@ -819,6 +835,9 @@ export async function setUserIdentifier(
   const localChoice = storageService!.loadPreferences();
   const hadConsentedFlag = storageService!.hasUserConsented();
   const hasExplicitChoice = hadConsentedFlag && localChoice !== null && !boundToOther;
+  // When the local choice is itself an earlier adopt, storage holds its signal-reconciled view: the
+  // raw map it came from is what a write must carry. Captured here because the read replaces it.
+  const localRawChoice = hasExplicitChoice ? rawLocalChoice(localChoice!) : null;
   // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
   const localCcpaOptout = storageService!.loadCcpaOptout();
   const localCcpaPendingSync = storageService!.hasPendingCcpaOptoutSync();
@@ -873,7 +892,7 @@ export async function setUserIdentifier(
     // device signal leaks into the store.
     const universalPrefs: UniversalConsentPreferences = {
       isCustomised: localChoice!.isCustomised,
-      cookieOptions: toRawCookieMap(localChoice!),
+      cookieOptions: localRawChoice!,
     };
 
     // The local CCPA opt-out rides the write with the categories. A re-sync rehydrate above replaced
@@ -890,7 +909,7 @@ export async function setUserIdentifier(
     // so local reads must show the choice being written, not the older record (which could re-enable
     // a category the user just turned off here). Same outcome as web and iOS.
     if (rawFromRecord !== null) {
-      restoreLocalChoice(localChoice!, suppressNonEssential);
+      restoreLocalChoice(localChoice!.isCustomised, localRawChoice!, suppressNonEssential);
     }
 
     await universalConsentService!.save(
@@ -933,27 +952,39 @@ export async function setUserIdentifier(
  * (TRUST-3310). Local state is the signal-RECONCILED view, as the read stores it: the same
  * suppression (the record's GPC or this device's tracking signal) applies to the restored choice, so
  * a denied signal still reads non-essential categories as off. Essential categories stay on. Fires
- * the listener, since the read already emitted the record's view.
+ * the listener, since the read already emitted the record's view. `rawChoice` is the RAW map being
+ * written; it is kept as the adopted raw choice, so a later write-through re-sends it rather than the
+ * suppressed view.
  */
-function restoreLocalChoice(choice: ConsentPreferences, suppressNonEssential: boolean): void {
+function restoreLocalChoice(
+  isCustomised: boolean,
+  rawChoice: Record<string, boolean>,
+  suppressNonEssential: boolean,
+): void {
   const essentialKeys = new Set(ConsentResolver.getEssentialCategories(currentConfig!));
-  const cookieOptions = reconcileSignals(
-    toRawCookieMap(choice),
-    suppressNonEssential,
-    essentialKeys,
-  );
+  const cookieOptions = reconcileSignals(rawChoice, suppressNonEssential, essentialKeys);
   for (const key of essentialKeys) {
     cookieOptions[key] = true;
   }
   const preferences: ConsentPreferences = {
-    isCustomised: choice.isCustomised,
+    isCustomised,
     cookieOptions: Object.entries(cookieOptions).map(([gtmKey, isEnabled]) => ({
       gtmKey,
       isEnabled,
     })),
   };
   storageService!.savePreferences(preferences);
+  storageService!.saveAdoptedRawChoice(rawChoice);
   eventEmitter.emit(preferences);
+}
+
+/**
+ * The RAW category map a write-through sends for the stored local choice: the adopted record's raw
+ * map while the stored preferences are still that adopt's signal-reconciled view, else the stored
+ * preferences themselves (an explicit choice made on this device is already raw).
+ */
+function rawLocalChoice(localChoice: ConsentPreferences): Record<string, boolean> {
+  return storageService!.loadAdoptedRawChoice() ?? toRawCookieMap(localChoice);
 }
 
 /** The `{ gtmKey: isEnabled }` map a Universal Consent write carries, from local preferences. */

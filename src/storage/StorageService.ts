@@ -60,15 +60,44 @@ export class StorageService {
   }
 
   /**
-   * Remove the explicit consent choice (stored preferences, the user-consented flag and the CCPA
-   * opt-out flag) so reads fall back to the config defaults, as on a fresh install. Leaves the
+   * Remove the explicit consent choice (stored preferences, the user-consented flag, the adopted raw
+   * choice and the CCPA opt-out flag) so reads fall back to the config defaults, as on a fresh install. Leaves the
    * unique id, config version, config cache, pending queue and identity binding in place.
    */
   clearUserChoice(): void {
     this.storage.delete(STORAGE_KEYS.PREFERENCES);
     this.storage.delete(STORAGE_KEYS.USER_CONSENTED);
+    this.clearAdoptedRawChoice();
     this.clearCcpaOptout();
     this.clearDecisionTs();
+  }
+
+  /**
+   * Record the RAW category map of the Universal Consent record the stored preferences were just
+   * adopted from (the stored preferences are its signal-reconciled view).
+   */
+  saveAdoptedRawChoice(cookieOptions: Record<string, boolean>): void {
+    this.storage.set(STORAGE_KEYS.ADOPTED_RAW_CHOICE, JSON.stringify(cookieOptions));
+  }
+
+  /** The RAW map the stored preferences were adopted from, or `null` when they are not an adopt. */
+  loadAdoptedRawChoice(): Record<string, boolean> | null {
+    const raw = this.storage.getString(STORAGE_KEYS.ADOPTED_RAW_CHOICE);
+    if (raw === undefined) {
+      return null;
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, boolean>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  clearAdoptedRawChoice(): void {
+    this.storage.delete(STORAGE_KEYS.ADOPTED_RAW_CHOICE);
   }
 
   /**

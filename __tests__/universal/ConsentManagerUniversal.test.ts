@@ -1071,6 +1071,11 @@ describe('ConsentManager — Universal Consent', () => {
       expect(ucPosts(fetchMock)).toHaveLength(0);
       expect(getPreferences()?.isCustomised).toBe(true);
       expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      // Essential-only means every optional category stays OFF, even one whose config default is on
+      // (performance here): the login neutral fill must not enable what the answer left off.
+      expect(isCategoryEnabled('dg-category-performance')).toBe(false);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(isCategoryEnabled('dg-category-functional')).toBe(false);
       // The answered choice is persisted, so the banner does not re-prompt, and the listener fires.
       expect(hasUserConsent()).toBe(true);
       expect(listener).toHaveBeenCalledTimes(1);
@@ -1924,6 +1929,61 @@ describe('ConsentManager — Universal Consent', () => {
         await setCcpaOptout(true);
 
         expect(ucPosts(fetchMock)).toHaveLength(0);
+      });
+
+      it('does not write when a logout and a new local choice land while the hash is computed', async () => {
+        const fetchMock = await initThenStub(configWithGate(true));
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        let resolveHash: (hash: string) => void = () => undefined;
+        mockComputeUserHash.mockImplementationOnce(
+          () => new Promise<string>((resolve) => (resolveHash = resolve)),
+        );
+
+        const pending = setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        // User A logs out and the next visitor makes their own choice before the hash resolves.
+        clearUserIdentifier();
+        await savePreferences(explicitChoice(false));
+        resolveHash(USER_HASH);
+        await pending;
+
+        // The next visitor's categories never reach A's record.
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(deviceStorage().loadBoundUserHash()).toBeNull();
+      });
+
+      it('re-sends the adopted record RAW choice, not the ATT-suppressed local view', async () => {
+        // Login adopts a record with marketing ON while ATT is denied: local reads suppress it.
+        const fetchMock = await initThenStub(configWithGate(true), found());
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature, trackingSignal: 'denied' });
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+        expect(hasUserConsent()).toBe(true);
+
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        // Changing only the Do Not Sell flag leaves the stored marketing choice enabled.
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        const body = postBody(posts[0]);
+        expect(body.ccpa_optout).toBe(true);
+        expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
+        // Local reads keep the suppressed view.
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      });
+
+      it('sends an explicit local choice made after an adopt as stored', async () => {
+        const fetchMock = await initThenStub(configWithGate(true), found(), response(200, ''));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature, trackingSignal: 'denied' });
+        // The user now turns marketing off themselves: that is a raw choice, not a suppression.
+        await savePreferences(explicitChoice(false));
+
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        expect(postBody(posts[0]).consent_preferences.cookieOptions['dg-category-marketing']).toBe(
+          false,
+        );
       });
 
       it('never seeds config defaults: bound with no explicit category choice stays local', async () => {
