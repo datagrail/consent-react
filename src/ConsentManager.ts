@@ -16,6 +16,7 @@ import { ConsentResolver } from './consent/ConsentResolver';
 import { ConsentEventEmitter } from './consent/EventEmitter';
 import { UniversalConsentService } from './universal/UniversalConsentService';
 import { reconcileSignals } from './universal/types';
+import { recordDecisionTs } from './universal/decisionTs';
 import type {
   SignatureProvider,
   UniversalConsentPreferences,
@@ -144,6 +145,9 @@ export async function savePreferences(prefs: ConsentPreferences): Promise<void> 
   storageService!.savePreferences(prefs);
   storageService!.saveConfigVersion(currentConfig!.version);
   storageService!.setUserConsented(true);
+  // A real choice, made now (TRUST-3225): the stale-re-sync guard compares this against a found
+  // record's updated_at, and every Universal Consent write sends it as decision_ts.
+  storageService!.saveDecisionTs();
 
   // Emit event
   eventEmitter.emit(prefs);
@@ -345,6 +349,10 @@ export async function setCcpaOptout(
     apiKey,
     optedOut,
     sync.getSignature,
+    // The write re-sends the stored CATEGORY choice, so it carries that choice's time, not now
+    // (TRUST-3225): stamping it now would let a stale device's category copy out-rank a revocation
+    // made since on another device. The write has one decision_ts, so the ccpa flag rides with it.
+    storageService!.loadDecisionTs(),
   );
 }
 
@@ -502,6 +510,7 @@ async function rehydrateReturningRawPreferences(
   recordFound: boolean;
   rawCookieOptions: Record<string, boolean> | null;
   recordCcpaOptout: boolean | null;
+  recordDecisionTs: number | null;
 }> {
   assertUniversalConsentEnabled();
 
@@ -520,6 +529,7 @@ async function rehydrateReturningRawPreferences(
       recordFound: record !== null,
       rawCookieOptions: null,
       recordCcpaOptout: record?.ccpaOptout ?? null,
+      recordDecisionTs: recordDecisionTs(record?.updatedAt),
     };
   }
   const rawCookieOptions = record.consentPreferences.cookieOptions ?? {};
@@ -568,6 +578,15 @@ async function rehydrateReturningRawPreferences(
   // auto-persists defaults). Without it the rehydrated state would apply to category reads but
   // the banner would still show, which is the bug this method exists to fix.
   storageService!.setUserConsented(true);
+  // The adopted choice was made when the RECORD says, not now (TRUST-3225): stamping now would make
+  // this copy look newer than it is, and a later re-sync from this device could then out-rank a
+  // revocation made elsewhere in between. An unknown record time leaves the local time unknown too.
+  const adoptedDecisionTs = recordDecisionTs(record!.updatedAt);
+  if (adoptedDecisionTs !== null) {
+    storageService!.saveDecisionTs(adoptedDecisionTs);
+  } else {
+    storageService!.clearDecisionTs();
+  }
   // The record's stored CCPA opt-out replaces the local flag along with the categories (an absent
   // field decodes to false). Not derived from anything: it is the user's recorded DNSMPI choice.
   // Outside a login, adopt it only with the syncOptout gate on: with the gate off the SDK never
@@ -578,7 +597,12 @@ async function rehydrateReturningRawPreferences(
   }
 
   eventEmitter.emit(preferences);
-  return { recordFound: true, rawCookieOptions, recordCcpaOptout: record!.ccpaOptout };
+  return {
+    recordFound: true,
+    rawCookieOptions,
+    recordCcpaOptout: record!.ccpaOptout,
+    recordDecisionTs: adoptedDecisionTs,
+  };
 }
 
 /**
@@ -610,6 +634,11 @@ interface IdentityBindInput {
   hadConsentedFlag: boolean;
   /** An explicit local category choice exists for THIS identity (not defaults, not another user's). */
   hasExplicitChoice: boolean;
+  /**
+   * The local choice was made strictly AFTER the found record's latest decision (TRUST-3225): both
+   * times are known and local > record `updated_at`. `false` when either is unknown or they tie.
+   */
+  localIsNewerThanRecord: boolean;
   /** The record's stored CCPA opt-out (`null` when absent). */
   recordCcpaOptout: boolean | null;
   /** `universalConsent.syncOptout` — whether the CCPA flag is carried on the wire for this config. */
@@ -631,6 +660,7 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
     boundToOther,
     hadConsentedFlag,
     hasExplicitChoice,
+    localIsNewerThanRecord,
     recordCcpaOptout,
     syncOptout,
   } = input;
@@ -650,9 +680,15 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
 
   // FOUND usable prefs: the read already adopted the record into local state. A LOGIN lets the
   // record win over any pre-login choice; a RE-SYNC with no local change has nothing to re-POST.
-  // Either binds without writing. A RE-SYNC with an explicit local change writes it through.
+  // Either binds without writing. A RE-SYNC with an explicit local change writes it through, but
+  // only when that change is NEWER than the record (TRUST-3225, P0-06). Otherwise this device holds
+  // a stale copy (the user changed their choice on another device since this one last synced), and
+  // writing it would undo the newer choice, so the adopt stands. The record's updated_at is the
+  // latest decision across ALL its categories, so this errs toward adopting: a newer local change
+  // to one category can lose to an even newer change elsewhere (per-category times on GET are
+  // TRUST-3226). An unknown local time, an unusable updated_at, and a same-second tie all adopt.
   if (hasUsablePrefs) {
-    if (!isResync || !hasExplicitChoice) {
+    if (!isResync || !hasExplicitChoice || !localIsNewerThanRecord) {
       return { kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null };
     }
     return { kind: 'write' };
@@ -705,7 +741,10 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
  *   (the host skipped `clearUserIdentifier()`) returns to neutral so the previous user's state does
  *   not linger for this one.
  * - RE-SYNC + FOUND record: adopt it when there is no local change; otherwise write the local
- *   choice through (sync-on-change). The write NEVER re-POSTs the fetched record.
+ *   choice through (sync-on-change), but only when that change was made AFTER the record's latest
+ *   decision (TRUST-3225). A local copy that is not newer — a stale device returning after the user
+ *   changed their choice elsewhere — adopts the record, so it can never undo a newer revocation.
+ *   The write NEVER re-POSTs the fetched record, and carries the local choice's true decision time.
  * - RE-SYNC + MISS: an explicit local choice is written; otherwise nothing is.
  *
  * The CCPA opt-out flag (`setCcpaOptout`) follows the same rule: a found record's `ccpa_optout`
@@ -774,6 +813,9 @@ export async function setUserIdentifier(
   const hasExplicitChoice = hadConsentedFlag && localChoice !== null && !boundToOther;
   // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
   const localCcpaOptout = storageService!.loadCcpaOptout();
+  // ...and when the local choice was made (TRUST-3225): adopting a found record overwrites it with
+  // the record's time. Only meaningful for an explicit choice; `null` = unknown.
+  const localDecisionTs = hasExplicitChoice ? storageService!.loadDecisionTs() : null;
 
   // Read first. A genuine MISS comes back as `null`. A read FAILURE throws, and MUST propagate:
   // a rich remote record may exist that we simply could not read, and the server never merges — a
@@ -786,6 +828,7 @@ export async function setUserIdentifier(
     recordFound,
     rawCookieOptions: rawFromRecord,
     recordCcpaOptout,
+    recordDecisionTs: remoteDecisionTs,
   } = await rehydrateReturningRawPreferences(
     identifier,
     apiKey,
@@ -806,6 +849,8 @@ export async function setUserIdentifier(
     boundToOther,
     hadConsentedFlag,
     hasExplicitChoice,
+    localIsNewerThanRecord:
+      localDecisionTs !== null && remoteDecisionTs !== null && localDecisionTs > remoteDecisionTs,
     recordCcpaOptout,
     syncOptout: currentConfig!.universalConsent?.syncOptout === true,
   });
@@ -823,6 +868,10 @@ export async function setUserIdentifier(
     // The local CCPA opt-out rides the write with the categories. A re-sync rehydrate above replaced
     // the local flag with the record's; put the user's own value back so local matches the write.
     storageService!.saveCcpaOptout(localCcpaOptout);
+    // Same for the decision time: the write carries the local choice, so local keeps its time.
+    if (localDecisionTs !== null) {
+      storageService!.saveDecisionTs(localDecisionTs);
+    }
 
     await universalConsentService!.save(
       currentConfig!,
@@ -833,6 +882,8 @@ export async function setUserIdentifier(
       // tracking signal, ATT or marketing consent (TRUST-2591). The service applies the syncOptout gate.
       localCcpaOptout,
       getSignature,
+      // The TRUE time of the local choice (TRUST-3225); unknown falls back to the request time.
+      localDecisionTs,
     );
   } else {
     // No write. A found record's existence can override a pre-login or other-user local choice

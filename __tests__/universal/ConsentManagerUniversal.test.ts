@@ -1396,6 +1396,7 @@ describe('ConsentManager — Universal Consent', () => {
       boundToOther: false,
       hadConsentedFlag: false,
       hasExplicitChoice: false,
+      localIsNewerThanRecord: false,
       recordCcpaOptout: null as boolean | null,
       syncOptout: false,
     };
@@ -1435,8 +1436,23 @@ describe('ConsentManager — Universal Consent', () => {
           recordFound: true,
           isResync: true,
           hasExplicitChoice: true,
+          localIsNewerThanRecord: true,
         }),
       ).toEqual({ kind: 'write' });
+    });
+
+    it('found usable record + re-sync change that is NOT newer than the record: adopt (TRUST-3225)', () => {
+      // A stale local copy (or one with an unknown time) never out-ranks the record.
+      expect(
+        decideIdentityBind({
+          ...base,
+          hasUsablePrefs: true,
+          recordFound: true,
+          isResync: true,
+          hasExplicitChoice: true,
+          localIsNewerThanRecord: false,
+        }),
+      ).toEqual({ kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null });
     });
 
     it('no usable prefs + nothing explicit: bindOnly, neutral only when bound elsewhere', () => {
@@ -1514,6 +1530,223 @@ describe('ConsentManager — Universal Consent', () => {
       expect(map['dg-category-essential']).toBe(true);
     });
   });
+  describe('stale re-sync guard (TRUST-3225, P0-06)', () => {
+    // Opaque, customer-supplied identifier: UC never sees anything email-shaped.
+    const ID = 'uc-user-7f3a9c';
+    const deviceStorage = () => new StorageService();
+    const T0 = 1_790_000_000; // the test's "now", unix seconds
+    let nowSpy: jest.SpyInstance<number, []>;
+    const setNow = (seconds: number) => nowSpy.mockReturnValue(seconds * 1000);
+    const iso = (seconds: number) => new Date(seconds * 1000).toISOString();
+    const sha256 = (input: string) =>
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('crypto').createHash('sha256').update(input, 'utf8').digest('hex') as string;
+
+    function ucPosts(mock: jest.Mock) {
+      return mock.mock.calls.filter(
+        (call) =>
+          (call[1] as { method: string }).method === 'POST' &&
+          String(call[0]).includes('/universal_consent'),
+      );
+    }
+
+    /** A found record with marketing as given, last decided at `updatedAt` (unix seconds). */
+    const recordAt = (updatedAt: number | null, marketing: boolean) =>
+      found({
+        consent_preferences: {
+          isCustomised: true,
+          cookieOptions: {
+            'dg-category-essential': true,
+            'dg-category-marketing': marketing,
+            'dg-category-performance': true,
+            'dg-category-functional': true,
+          },
+        },
+        updated_at: updatedAt === null ? null : iso(updatedAt),
+      });
+
+    /** Init bound to the user (so the next call is a RE-SYNC), then make a choice at `choiceAt`. */
+    async function boundDeviceWithChoiceAt(
+      choiceAt: number,
+      marketing: boolean,
+      configJson = universalConfigJson,
+    ) {
+      setNow(choiceAt);
+      bindDeviceTo(USER_HASH);
+      mockFetchSequence(configJson, response(200, ''));
+      await initUniversal();
+      await savePreferences(explicitChoice(marketing));
+    }
+
+    function stubUcFetch(...responses: ReturnType<typeof response>[]) {
+      const mock = jest.fn();
+      for (const r of responses) mock.mockResolvedValueOnce(r);
+      mock.mockResolvedValue(response(200, ''));
+      global.fetch = mock;
+      return mock;
+    }
+
+    beforeEach(() => {
+      nowSpy = jest.spyOn(Date, 'now');
+      setNow(T0);
+    });
+
+    afterEach(() => {
+      nowSpy.mockRestore();
+    });
+
+    it('P0-06: grant here, revoke elsewhere later, re-sync here adopts the revocation and writes nothing', async () => {
+      // This device granted marketing at T0 and went quiet.
+      await boundDeviceWithChoiceAt(T0, true);
+      // The user revoked marketing on another device at T0+60. This device re-syncs at T0+120.
+      setNow(T0 + 120);
+      const fetchMock = stubUcFetch(recordAt(T0 + 60, false));
+
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      // The adopted choice carries the record's time, not "now", so it cannot out-rank a later one.
+      expect(deviceStorage().loadDecisionTs()).toBe(T0 + 60);
+    });
+
+    it('a re-sync change made AFTER the record writes through with its true decision_ts', async () => {
+      await boundDeviceWithChoiceAt(T0 + 60, false);
+      setNow(T0 + 120);
+      const fetchMock = stubUcFetch(recordAt(T0, true));
+
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      const init = posts[0][1] as { body: string; headers: Record<string, string> };
+      const body = JSON.parse(init.body);
+      expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+      expect(body.is_explicit).toBe(true);
+      // The time of the choice, not the request time...
+      expect(body.decision_ts).toBe(T0 + 60);
+      expect(init.headers['X-DG-Timestamp']).toBe(String(T0 + 120));
+      // ...and that is the decision_ts signed into provDigest.
+      const payload = getSignature.mock.calls[0][0];
+      expect(payload.stringToSign.split(':')[4]).toBe(sha256(`true\n${T0 + 60}\n`));
+      // Local keeps the time of its own choice.
+      expect(deviceStorage().loadDecisionTs()).toBe(T0 + 60);
+    });
+
+    it('a same-second tie adopts the record (the revocation-safe default)', async () => {
+      await boundDeviceWithChoiceAt(T0, true);
+      const fetchMock = stubUcFetch(recordAt(T0, false));
+
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+    });
+
+    it('a local choice with no recorded time (stored before TRUST-3225) adopts', async () => {
+      await boundDeviceWithChoiceAt(T0, true);
+      deviceStorage().clearDecisionTs();
+      setNow(T0 + 120);
+      const fetchMock = stubUcFetch(recordAt(T0 - 3600, false));
+
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+    });
+
+    it('a record with no usable updated_at adopts, and leaves the local time unknown', async () => {
+      await boundDeviceWithChoiceAt(T0, true);
+      const fetchMock = stubUcFetch(recordAt(null, false));
+
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(deviceStorage().loadDecisionTs()).toBeNull();
+    });
+
+    it('an API-key-only re-sync (no getSignature) is guarded too', async () => {
+      await boundDeviceWithChoiceAt(T0, true);
+      setNow(T0 + 120);
+      const fetchMock = stubUcFetch(recordAt(T0 + 60, false));
+
+      await setUserIdentifier(ID, { apiKey: API_KEY });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+    });
+
+    it('a miss seeds the record with the true decision_ts of the local choice', async () => {
+      await boundDeviceWithChoiceAt(T0, false);
+      setNow(T0 + 600);
+      const fetchMock = stubUcFetch(notFound());
+
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse((posts[0][1] as { body: string }).body).decision_ts).toBe(T0);
+    });
+
+    it('a login adopt stamps the record time; a later choice here is newer and writes through', async () => {
+      mockFetchSequence(universalConfigJson, response(200, ''));
+      await initUniversal();
+      stubUcFetch(recordAt(T0 - 60, true));
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+      expect(deviceStorage().loadDecisionTs()).toBe(T0 - 60);
+
+      // A choice right after the adopt is stamped now and so out-ranks the adopted record.
+      await savePreferences(explicitChoice(false));
+      expect(deviceStorage().loadDecisionTs()).toBe(T0);
+      const fetchMock = stubUcFetch(recordAt(T0 - 60, true));
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      expect(JSON.parse((posts[0][1] as { body: string }).body).decision_ts).toBe(T0);
+    });
+
+    it('a choice is stamped monotonically, and logout clears the stamp with the choice', async () => {
+      await boundDeviceWithChoiceAt(T0, true);
+      expect(deviceStorage().loadDecisionTs()).toBe(T0);
+      // Choices in the same second still order.
+      await savePreferences(explicitChoice(false));
+      expect(deviceStorage().loadDecisionTs()).toBe(T0 + 1);
+      await acceptAll();
+      expect(deviceStorage().loadDecisionTs()).toBe(T0 + 2);
+
+      clearUserIdentifier();
+
+      expect(deviceStorage().loadDecisionTs()).toBeNull();
+    });
+
+    it('a stored stamp implausibly far ahead of this clock reads as unknown', async () => {
+      await boundDeviceWithChoiceAt(T0, true);
+      deviceStorage().saveDecisionTs(T0 + 3600);
+      expect(deviceStorage().loadDecisionTs()).toBeNull();
+    });
+
+    it("setCcpaOptout re-sends the category choice with that choice's time, not now", async () => {
+      const parsed = JSON.parse(universalConfigJson);
+      const gated = JSON.stringify({
+        ...parsed,
+        universalConsent: { ...parsed.universalConsent, sync_optout: true },
+      });
+      await boundDeviceWithChoiceAt(T0, true, gated);
+      setNow(T0 + 300);
+      const fetchMock = stubUcFetch();
+
+      await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      const body = JSON.parse((posts[0][1] as { body: string }).body);
+      expect(body.ccpa_optout).toBe(true);
+      expect(body.decision_ts).toBe(T0);
+    });
+  });
+
   describe('ccpa_optout (TRUST-2591)', () => {
     const OTHER_HASH = 'c'.repeat(64);
     const ID = 'user@example.com';

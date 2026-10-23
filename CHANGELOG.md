@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A miss no longer seeds a record from config defaults, on login or re-sync. Re-sync write-through over a found record is unchanged.
 - **Behavior change (TRUST-2591):** Universal Consent writes now send `ccpa_optout` from the user's stored choice (`setCcpaOptout`), gated by `universalConsent.sync_optout`, instead of always `false`. A found record's `ccpa_optout` is adopted into the local flag: on login it always replaces a pre-login value; on a re-sync only when `sync_optout` is on (with the gate off the record never carries the choice). `clearUserIdentifier()` returns the flag to `false` and `reset()` wipes it. Records written earlier are adopted as they are.
 
+### Fixed
+
+- A stale device's Universal Consent re-sync can no longer undo a newer revocation made on another device (TRUST-3225, the React Native port of TRUST-3154 / sign-off scenario P0-06). The SDK now records when each consent choice was made (an adopted record keeps the record's `updated_at`), sends it as `decision_ts` with `is_explicit: true` on every write and signs it into the provenance digest, and on a re-sync writes the local choice through only when it is strictly newer than the found record's `updated_at`. Otherwise it adopts the record. A same-second tie, a choice stored before this release (unknown time), or a record without a usable `updated_at` all adopt. The `getSignature` contract is unchanged; customer backends that HMAC `payload.stringToSign` verbatim need no change, but one that rebuilds the string from the fields will now be rejected.
+
 ## [0.1.0-alpha.1] - 2026-05-29
 
 ### Added
