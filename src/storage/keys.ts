@@ -22,6 +22,12 @@ export const STORAGE_KEYS = {
   // setCcpaOptout, by adopting a found Universal Consent record, and cleared to false by
   // clearUserIdentifier / the neutral reset; wiped by reset() (clearAll). Never derived.
   CCPA_OPTOUT: 'datagrail_consent_ccpa_optout',
+  // The RAW (not signal-reconciled) category map of the Universal Consent record that the stored
+  // preferences were adopted from. Local state holds the reconciled view, so a write-through that
+  // re-sends an adopted choice must send this instead, or a device-local suppression (ATT, the
+  // record's GPC) would be stored cross-device as a denial. Present only while the stored
+  // preferences are still that adopt: an explicit save, the neutral reset and reset() remove it.
+  ADOPTED_RAW_CHOICE: 'datagrail_consent_adopted_raw_choice',
 } as const;
 
 export const CURRENT_SCHEMA_VERSION = 2;
