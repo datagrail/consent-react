@@ -320,18 +320,14 @@ export async function setCcpaOptout(
   },
 ): Promise<void> {
   assertInitialized();
-  storageService!.saveCcpaOptout(optedOut);
-
-  if (
-    sync === undefined ||
-    !isUniversalConsentEnabled() ||
-    currentConfig!.universalConsent?.syncOptout !== true
-  ) {
-    return;
-  }
-
+  const syncs = isUniversalConsentEnabled() && currentConfig!.universalConsent?.syncOptout === true;
   const boundHash = storageService!.loadBoundUserHash();
-  if (boundHash === null) {
+  // Pending until a write-through below succeeds, but only on a bound device: an unbound device's
+  // next setUserIdentifier is a LOGIN, which replaces the flag with the record's regardless. While
+  // pending, a RE-SYNC keeps this choice instead of adopting the record's stale value (TRUST-3308).
+  storageService!.saveCcpaOptout(optedOut, syncs && boundHash !== null);
+
+  if (sync === undefined || !syncs || boundHash === null) {
     return;
   }
   const userHash = await universalConsentService!.userHash(currentConfig!, sync.identifier);
@@ -354,6 +350,7 @@ export async function setCcpaOptout(
     // made since on another device. The write has one decision_ts, so the ccpa flag rides with it.
     storageService!.loadDecisionTs(),
   );
+  storageService!.markCcpaOptoutSynced(optedOut);
 }
 
 /**
@@ -591,8 +588,15 @@ async function rehydrateReturningRawPreferences(
   // field decodes to false). Not derived from anything: it is the user's recorded DNSMPI choice.
   // Outside a login, adopt it only with the syncOptout gate on: with the gate off the SDK never
   // puts the choice on the record (it always says false), so adopting it would erase a local-only
-  // setCcpaOptout(true) on every re-sync. Same rule as the web/iOS/Android SDKs.
-  if (fillFromNeutral || currentConfig!.universalConsent?.syncOptout === true) {
+  // setCcpaOptout(true) on every re-sync. Same rule as the web/iOS/Android SDKs. Nor, on a re-sync,
+  // while a setCcpaOptout choice is pending sync (TRUST-3308): it has not reached the record, so the
+  // record still holds the value the user just changed, and adopting it would discard that choice.
+  // A login adopt replaces the flag regardless (and so clears the pending marker).
+  if (
+    fillFromNeutral ||
+    (currentConfig!.universalConsent?.syncOptout === true &&
+      !storageService!.hasPendingCcpaOptoutSync())
+  ) {
     storageService!.saveCcpaOptout(record!.ccpaOptout);
   }
 
@@ -643,6 +647,8 @@ interface IdentityBindInput {
   recordCcpaOptout: boolean | null;
   /** `universalConsent.syncOptout` — whether the CCPA flag is carried on the wire for this config. */
   syncOptout: boolean;
+  /** A setCcpaOptout choice has not reached the record yet, so a RE-SYNC must keep it (TRUST-3308). */
+  ccpaPendingSync: boolean;
 }
 
 /**
@@ -663,6 +669,7 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
     localIsNewerThanRecord,
     recordCcpaOptout,
     syncOptout,
+    ccpaPendingSync,
   } = input;
 
   // LOGIN + FOUND signal-only record (consent_preferences ABSENT — TRUST-2961: a present but empty
@@ -697,9 +704,10 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
   // No usable prefs (a miss, or a found signal-only record on a RE-SYNC) and nothing explicit to
   // attach: write nothing — config defaults are never seeded as a choice. A device still bound to
   // someone else returns to neutral so their state does not linger for this user. A RE-SYNC of a
-  // found signal-only record adopts its CCPA flag under the syncOptout gate.
+  // found signal-only record adopts its CCPA flag under the syncOptout gate, unless a setCcpaOptout
+  // choice is still pending sync (TRUST-3308).
   if (!hasExplicitChoice) {
-    const adoptCcpa = recordFound && isResync && syncOptout;
+    const adoptCcpa = recordFound && isResync && syncOptout && !ccpaPendingSync;
     return {
       kind: 'bindOnly',
       returnToNeutral: boundToOther,
@@ -813,6 +821,7 @@ export async function setUserIdentifier(
   const hasExplicitChoice = hadConsentedFlag && localChoice !== null && !boundToOther;
   // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
   const localCcpaOptout = storageService!.loadCcpaOptout();
+  const localCcpaPendingSync = storageService!.hasPendingCcpaOptoutSync();
   // ...and when the local choice was made (TRUST-3225): adopting a found record overwrites it with
   // the record's time. Only meaningful for an explicit choice; `null` = unknown.
   const localDecisionTs = hasExplicitChoice ? storageService!.loadDecisionTs() : null;
@@ -853,6 +862,7 @@ export async function setUserIdentifier(
       localDecisionTs !== null && remoteDecisionTs !== null && localDecisionTs > remoteDecisionTs,
     recordCcpaOptout,
     syncOptout: currentConfig!.universalConsent?.syncOptout === true,
+    ccpaPendingSync: localCcpaPendingSync,
   });
 
   if (decision.kind === 'write') {
@@ -867,7 +877,7 @@ export async function setUserIdentifier(
 
     // The local CCPA opt-out rides the write with the categories. A re-sync rehydrate above replaced
     // the local flag with the record's; put the user's own value back so local matches the write.
-    storageService!.saveCcpaOptout(localCcpaOptout);
+    storageService!.saveCcpaOptout(localCcpaOptout, localCcpaPendingSync);
     // Same for the decision time: the write carries the local choice, so local keeps its time.
     if (localDecisionTs !== null) {
       storageService!.saveDecisionTs(localDecisionTs);
@@ -885,6 +895,10 @@ export async function setUserIdentifier(
       // The TRUE time of the local choice (TRUST-3225); unknown falls back to the request time.
       localDecisionTs,
     );
+    // The flag reached the record (the service only carries it under the syncOptout gate).
+    if (currentConfig!.universalConsent?.syncOptout === true) {
+      storageService!.markCcpaOptoutSynced(localCcpaOptout);
+    }
   } else {
     // No write. A found record's existence can override a pre-login or other-user local choice
     // (returnToNeutral), and/or the record is authoritative for the stored CCPA flag

@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `setCcpaOptout` choice on a bound device that could not write through yet (no `sync` passed, no explicit category choice, or a failed write) is no longer overwritten by the record's stale `ccpa_optout` on the next re-sync (TRUST-3308, port of the consent-banner #756 fix). The flag is marked pending sync until a successful write carries it; a login adopt, logout and neutral reset clear the marker.
 - A stale device's Universal Consent re-sync can no longer undo a newer revocation made on another device (TRUST-3225, the React Native port of TRUST-3154 / sign-off scenario P0-06). The SDK now records when each consent choice was made (an adopted record keeps the record's `updated_at`), sends it as `decision_ts` with `is_explicit: true` on every write and signs it into the provenance digest, and on a re-sync writes the local choice through only when it is strictly newer than the found record's `updated_at`. Otherwise it adopts the record. A same-second tie, a choice stored before this release (unknown time), or a record without a usable `updated_at` all adopt. The `getSignature` contract is unchanged; customer backends that HMAC `payload.stringToSign` verbatim need no change, but one that rebuilds the string from the fields will now be rejected.
 
 ## [0.1.0-alpha.1] - 2026-05-29

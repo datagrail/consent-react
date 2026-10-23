@@ -114,9 +114,30 @@ export class StorageService {
     this.storage.delete(STORAGE_KEYS.DECISION_TS);
   }
 
-  /** Persist the user's explicit CCPA "Do Not Sell or Share" choice. */
-  saveCcpaOptout(optedOut: boolean): void {
+  /**
+   * Persist the user's explicit CCPA "Do Not Sell or Share" choice. Every write states whether the
+   * value is pending sync (TRUST-3308): only setCcpaOptout's not-yet-written choice on a bound device
+   * is; anything else (adopting a record, the write-through restore of a synced value) is not.
+   */
+  saveCcpaOptout(optedOut: boolean, pendingSync = false): void {
     this.storage.set(STORAGE_KEYS.CCPA_OPTOUT, optedOut);
+    if (pendingSync) {
+      this.storage.set(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC, true);
+    } else {
+      this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
+    }
+  }
+
+  /** Whether the stored CCPA flag is a setCcpaOptout choice that has not reached the record yet. */
+  hasPendingCcpaOptoutSync(): boolean {
+    return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC) ?? false;
+  }
+
+  /** A write carrying `sent` succeeded: a pending choice reached the record, unless it changed since. */
+  markCcpaOptoutSynced(sent: boolean): void {
+    if (this.hasPendingCcpaOptoutSync() && this.loadCcpaOptout() === sent) {
+      this.saveCcpaOptout(sent);
+    }
   }
 
   /** The stored CCPA opt-out choice; `false` ("not opted out") when none is stored. */
@@ -126,6 +147,7 @@ export class StorageService {
 
   clearCcpaOptout(): void {
     this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT);
+    this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
   }
 
   saveBoundUserHash(userHash: string): void {

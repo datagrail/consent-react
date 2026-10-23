@@ -1399,6 +1399,7 @@ describe('ConsentManager — Universal Consent', () => {
       localIsNewerThanRecord: false,
       recordCcpaOptout: null as boolean | null,
       syncOptout: false,
+      ccpaPendingSync: false,
     };
 
     it('login + found signal-only record: bindOnly, neutral when explicit/other state, adopts record CCPA', () => {
@@ -2089,6 +2090,133 @@ describe('ConsentManager — Universal Consent', () => {
       reset();
 
       expect(deviceStorage().loadCcpaOptout()).toBe(false);
+    });
+    describe('a pending setCcpaOptout choice survives RE-SYNC (TRUST-3308)', () => {
+      // Opaque, customer-supplied identifier: UC never sees anything email-shaped.
+      const UID = 'uc-user-7f3a9c';
+
+      it('a local-only change on a bound device is kept over the stale record, then written and cleared', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          // The save_preferences POST from savePreferences below.
+          response(200, ''),
+          found({ ccpa_optout: false, updated_at: '2026-01-01T00:00:00Z' }),
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        // No `sync`: the choice cannot write through now, so it is pending.
+        await setCcpaOptout(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
+
+        // The category choice is newer than the record, so the re-sync writes through, carrying the
+        // pending flag rather than adopting the record's stale false.
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        expect(postBody(posts[0]).ccpa_optout).toBe(true);
+        expect(getCcpaOptout()).toBe(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a re-sync ADOPT keeps the pending flag and leaves it pending', async () => {
+        // Record newer than the local category choice: the categories adopt, the pending flag stays.
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }),
+        );
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true);
+
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
+      });
+
+      it('a re-sync of a signal-only record keeps the pending flag', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          found({ consent_preferences: null, ccpa_optout: false }),
+        );
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true);
+
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(true);
+      });
+
+      it('a failed write-through leaves the choice pending, so the next re-sync keeps it', async () => {
+        await initThenStub(configWithGate(true), response(200, ''), response(500, 'boom'));
+        bindDeviceTo(USER_HASH);
+        await savePreferences(explicitChoice(true));
+        await expect(
+          setCcpaOptout(true, { identifier: UID, apiKey: API_KEY, getSignature }),
+        ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
+
+        const stub = jest
+          .fn()
+          .mockResolvedValueOnce(found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }));
+        global.fetch = stub;
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+
+        expect(getCcpaOptout()).toBe(true);
+      });
+
+      it('a successful write-through clears the marker, so a later re-sync adopts the record again', async () => {
+        const fetchMock = await initThenStub(configWithGate(true));
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+
+        await setCcpaOptout(true, { identifier: UID, apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(1);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+        global.fetch = jest
+          .fn()
+          .mockResolvedValueOnce(found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }));
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+        expect(getCcpaOptout()).toBe(false);
+      });
+
+      it('is never pending on an unbound device or with the gate off', async () => {
+        await initThenStub(configWithGate(true));
+        await setCcpaOptout(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+
+        reset();
+        await initThenStub(configWithGate(false));
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a LOGIN adopt replaces the pending flag with the record value and clears the marker', async () => {
+        await initThenStub(configWithGate(true), found({ ccpa_optout: false }));
+        bindDeviceTo(OTHER_HASH);
+        await setCcpaOptout(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
+
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+
+        expect(getCcpaOptout()).toBe(false);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('logout clears the marker with the flag', async () => {
+        await initThenStub(configWithGate(true));
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true);
+
+        clearUserIdentifier();
+
+        expect(getCcpaOptout()).toBe(false);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
     });
   });
 });
