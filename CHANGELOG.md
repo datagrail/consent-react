@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `onConfigError` option on `initialize()`: receives background config-refresh failures as a `ConsentError` (`CONFIG_NOT_PUBLISHED`, `NETWORK_ERROR`, `TIMEOUT`, `PARSE_ERROR`) instead of them being silently discarded. The cached config is still served (TRUST-2745)
 - `CONFIG_NOT_PUBLISHED` error code: `initialize()` now rejects with it when the config URL returns a 4xx (other than 408/429) and there is no cached config (TRUST-2745)
 - `setCcpaOptout(optedOut, sync?)` and `getCcpaOptout()`: a first-class CCPA/CPRA "Do Not Sell or Share" choice (TRUST-2591). The host app is the source of truth on React Native (there is no native DNSMPI signal). The flag is stored on the device and never changes a category. With `sync`, it is written to the user's Universal Consent record when Universal Consent is enabled, `universalConsent.sync_optout` is on, the device is bound to that identifier, and the user has an explicit category choice. Otherwise it rides the next Universal Consent write.
 - `clearUserIdentifier()`: non-destructive logout for Universal Consent. It clears the device's identity binding and returns local consent to the config defaults (the banner shows again, listeners fire). It makes no network call, leaves the server-side record alone, and keeps the device ID, config cache and offline queue (TRUST-2902)

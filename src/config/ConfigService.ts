@@ -33,6 +33,7 @@ const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  */
 export class ConfigService {
   private readonly cacheTtl: number;
+  private disposed = false;
 
   constructor(
     private readonly network: NetworkService,
@@ -40,6 +41,14 @@ export class ConfigService {
     private readonly options: ConfigServiceOptions = {},
   ) {
     this.cacheTtl = options.cacheTtl ?? DEFAULT_CACHE_TTL_MS;
+  }
+
+  /**
+   * Stop reporting to onConfigError. A background refresh can retry for minutes, so after reset()
+   * or a re-initialize() it must not call back into a host closure that may no longer exist.
+   */
+  dispose(): void {
+    this.disposed = true;
   }
 
   async fetchConfig(configUrl: string): Promise<ConsentConfig> {
@@ -92,9 +101,28 @@ export class ConfigService {
   }
 
   private revalidateInBackground(configUrl: string): void {
-    // Fire and forget — errors are silently swallowed
-    this.fetchAndCache(configUrl).catch(() => {
-      // Intentionally swallowed — stale cache is already being served
+    // The stale cache is already being served, so a failure here only goes to the optional
+    // onConfigError callback. Nothing is rethrown: this promise has no awaiter.
+    this.fetchAndCache(configUrl).catch((error: unknown) => {
+      const onConfigError = this.options.onConfigError;
+      if (!onConfigError || this.disposed) {
+        return;
+      }
+
+      const consentError =
+        error instanceof ConsentError
+          ? error
+          : new ConsentError('NETWORK_ERROR', `Config refresh failed: ${String(error)}`);
+      // A throwing or rejecting callback must not become an unhandled rejection in the host app.
+      // The `void` return type still accepts an async function, so handle a returned promise too.
+      try {
+        const result: unknown = onConfigError(consentError);
+        if (result && typeof (result as PromiseLike<unknown>).then === 'function') {
+          (result as PromiseLike<unknown>).then(undefined, () => {});
+        }
+      } catch {
+        // Swallowed for the same reason.
+      }
     });
   }
 
@@ -110,6 +138,20 @@ export class ConfigService {
       throw new ConsentError('PARSE_ERROR', 'Failed to parse config JSON');
     }
 
+    // Valid JSON with the wrong shape (`{}`, `null`, a missing `plugins` or `layout`) throws a
+    // TypeError in the mapping below. That is a broken publish, not a network fault, so report it
+    // as PARSE_ERROR.
+    try {
+      return ConfigService.mapConfig(parsed);
+    } catch (error) {
+      if (error instanceof ConsentError) {
+        throw error;
+      }
+      throw new ConsentError('PARSE_ERROR', 'Config JSON did not match the expected schema');
+    }
+  }
+
+  private static mapConfig(parsed: RawConsentConfig): ConsentConfig {
     const config: ConsentConfig = {
       version: parsed.version,
       consentContainerVersionId: parsed.consentContainerVersionId,

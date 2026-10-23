@@ -75,6 +75,3 @@ allowlist in `package.json`. The `Release` workflow runs `npm run build:all`
   release (only `chore:`/`docs:`/etc.). Expected; not an error.
 - **Provenance / OIDC error** — confirm the workflow has `id-token: write` (it
   does) and that the npmjs.com trusted publisher matches this repo + `release.yml`.
-- **`npm ci` engine warnings on the Node 18/20 CI jobs** — expected;
-  semantic-release requires Node 22 and only runs in the `Release` job (Node 22).
-  The warnings are non-fatal.

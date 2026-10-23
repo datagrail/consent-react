@@ -7,6 +7,14 @@ export interface DataGrailConfig {
    * e.g. "https://cdn.cookielaw.datagrail.io/<customer-id>/config.json"
    */
   configUrl: string;
+  /**
+   * Called when a background config refresh fails. After the cache TTL, `initialize()` returns the
+   * cached config at once and refetches in the background; that refetch can fail with
+   * `CONFIG_NOT_PUBLISHED` (definite 4xx), `NETWORK_ERROR` (transport, 5xx, 408/429), `TIMEOUT`,
+   * or `PARSE_ERROR`. The cached config stays in use either way, so this is for logging only.
+   * Failures of the initial fetch (no cache) reject `initialize()` instead and do not call this.
+   */
+  onConfigError?: (error: ConsentError) => void;
 }
 
 /**
