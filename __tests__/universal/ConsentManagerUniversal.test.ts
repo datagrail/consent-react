@@ -752,9 +752,48 @@ describe('ConsentManager — Universal Consent', () => {
       // The user's real opt-in survives onto the wire — not the record's OFF, not the suppression.
       const body = JSON.parse((uidFetch.mock.calls[1][1] as { body: string }).body);
       expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
-      // ...while local reads still honor the record and this device's signal.
+      // ...while local reads keep the written choice (TRUST-3310), seen through this device's
+      // signal: marketing reads off because the signal is denied, not because the record said off.
       expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
       expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+    });
+
+    it('after a re-sync write-through, local reads show the choice written, not the older record (TRUST-3310)', async () => {
+      // Same shape with no signal: the record says marketing OFF, the newer local choice says ON.
+      // Before TRUST-3310 local reads were left on the record's OFF until the next sync.
+      mockFetchSequence(universalConfigJson, response(200, ''));
+      await initUniversal();
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: true },
+        ],
+      });
+      bindDeviceTo(USER_HASH);
+      const listener = jest.fn();
+      onConsentChanged(listener);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+            },
+          }),
+        )
+        .mockResolvedValueOnce(response(200, ''));
+
+      await setUserIdentifier('uc-user-7f3a9c', { apiKey: API_KEY, getSignature });
+
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(true);
+      expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+      // The last state the host was told about is the restored choice.
+      const last = listener.mock.calls[listener.mock.calls.length - 1][0] as ConsentPreferences;
+      expect(last.cookieOptions.find((o) => o.gtmKey === 'dg-category-marketing')?.isEnabled).toBe(
+        true,
+      );
     });
 
     it('write-throughs the local choice on a hit rather than re-POSTing the fetched record', async () => {
@@ -1630,8 +1669,9 @@ describe('ConsentManager — Universal Consent', () => {
       // ...and that is the decision_ts signed into provDigest.
       const payload = getSignature.mock.calls[0][0];
       expect(payload.stringToSign.split(':')[4]).toBe(sha256(`true\n${T0 + 60}\n`));
-      // Local keeps the time of its own choice.
+      // Local keeps the time of its own choice, and the choice itself (TRUST-3310).
       expect(deviceStorage().loadDecisionTs()).toBe(T0 + 60);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
     });
 
     it('a same-second tie adopts the record (the revocation-safe default)', async () => {

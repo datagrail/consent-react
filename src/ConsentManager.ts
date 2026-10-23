@@ -508,6 +508,7 @@ async function rehydrateReturningRawPreferences(
   rawCookieOptions: Record<string, boolean> | null;
   recordCcpaOptout: boolean | null;
   recordDecisionTs: number | null;
+  suppressNonEssential: boolean;
 }> {
   assertUniversalConsentEnabled();
 
@@ -527,6 +528,7 @@ async function rehydrateReturningRawPreferences(
       rawCookieOptions: null,
       recordCcpaOptout: record?.ccpaOptout ?? null,
       recordDecisionTs: recordDecisionTs(record?.updatedAt),
+      suppressNonEssential: false,
     };
   }
   const rawCookieOptions = record.consentPreferences.cookieOptions ?? {};
@@ -534,11 +536,8 @@ async function rehydrateReturningRawPreferences(
   // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
   // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
   const essentialKeys = new Set(ConsentResolver.getEssentialCategories(currentConfig!));
-  const reconciled = reconcileSignals(
-    rawCookieOptions,
-    record!.gpc || signalSuppressesNonEssential(trackingSignal),
-    essentialKeys,
-  );
+  const suppressNonEssential = record!.gpc || signalSuppressesNonEssential(trackingSignal);
+  const reconciled = reconcileSignals(rawCookieOptions, suppressNonEssential, essentialKeys);
 
   // On a login the record REPLACES local state: start from the neutral defaults (never the prior
   // local value) and overlay what the record carries. A fresh map either way: when no signal
@@ -606,6 +605,7 @@ async function rehydrateReturningRawPreferences(
     rawCookieOptions,
     recordCcpaOptout: record!.ccpaOptout,
     recordDecisionTs: adoptedDecisionTs,
+    suppressNonEssential,
   };
 }
 
@@ -838,6 +838,7 @@ export async function setUserIdentifier(
     rawCookieOptions: rawFromRecord,
     recordCcpaOptout,
     recordDecisionTs: remoteDecisionTs,
+    suppressNonEssential,
   } = await rehydrateReturningRawPreferences(
     identifier,
     apiKey,
@@ -881,6 +882,15 @@ export async function setUserIdentifier(
     // Same for the decision time: the write carries the local choice, so local keeps its time.
     if (localDecisionTs !== null) {
       storageService!.saveDecisionTs(localDecisionTs);
+    } else {
+      storageService!.clearDecisionTs();
+    }
+    // ...and the categories (TRUST-3310). The read stored the found record locally before the
+    // decision, but a re-sync only writes through when the local choice is NEWER than that record,
+    // so local reads must show the choice being written, not the older record (which could re-enable
+    // a category the user just turned off here). Same outcome as web and iOS.
+    if (rawFromRecord !== null) {
+      restoreLocalChoice(localChoice!, suppressNonEssential);
     }
 
     await universalConsentService!.save(
@@ -916,6 +926,34 @@ export async function setUserIdentifier(
   // failure (the awaited save) propagates before this line, so a failed call never binds and a
   // retry is still recognised as a login and re-evaluated from scratch.
   storageService!.saveBoundUserHash(userHash);
+}
+
+/**
+ * Put back the local choice a re-sync is writing through, over the older record the read stored
+ * (TRUST-3310). Local state is the signal-RECONCILED view, as the read stores it: the same
+ * suppression (the record's GPC or this device's tracking signal) applies to the restored choice, so
+ * a denied signal still reads non-essential categories as off. Essential categories stay on. Fires
+ * the listener, since the read already emitted the record's view.
+ */
+function restoreLocalChoice(choice: ConsentPreferences, suppressNonEssential: boolean): void {
+  const essentialKeys = new Set(ConsentResolver.getEssentialCategories(currentConfig!));
+  const cookieOptions = reconcileSignals(
+    toRawCookieMap(choice),
+    suppressNonEssential,
+    essentialKeys,
+  );
+  for (const key of essentialKeys) {
+    cookieOptions[key] = true;
+  }
+  const preferences: ConsentPreferences = {
+    isCustomised: choice.isCustomised,
+    cookieOptions: Object.entries(cookieOptions).map(([gtmKey, isEnabled]) => ({
+      gtmKey,
+      isEnabled,
+    })),
+  };
+  storageService!.savePreferences(preferences);
+  eventEmitter.emit(preferences);
 }
 
 /** The `{ gtmKey: isEnabled }` map a Universal Consent write carries, from local preferences. */
