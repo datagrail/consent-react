@@ -43,6 +43,7 @@ export interface RawConsentConfig {
   universalConsent?: {
     enabled?: boolean;
     sync_optout?: boolean;
+    apiKey?: string;
   } | null;
 }
 

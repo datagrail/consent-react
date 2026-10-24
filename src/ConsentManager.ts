@@ -144,6 +144,8 @@ export async function savePreferences(prefs: ConsentPreferences): Promise<void> 
   storageService!.savePreferences(prefs);
   storageService!.saveConfigVersion(currentConfig!.version);
   storageService!.setUserConsented(true);
+  // An explicit choice made here, so the stored preferences are no longer a Universal Consent adopt.
+  storageService!.clearAdoptedRawChoice();
 
   // Emit event
   eventEmitter.emit(prefs);
@@ -239,6 +241,8 @@ export function reset(): void {
  * `hasUserConsent()` false). Fires the consent-changed listener with the now-effective defaults,
  * the same way rehydration does, so the host can re-gate its SDKs.
  *
+ * The CCPA opt-out flag (`setCcpaOptout`) is part of the choice and returns to `false`.
+ *
  * Local only: no network call, and the unique id, config cache, config version and offline queue
  * are untouched. Does NOT touch the identity binding — callers decide that.
  */
@@ -260,7 +264,8 @@ function returnToNeutral(): void {
  * the previous user's consent keeps applying on this device, and a choice made after that
  * unannounced logout is treated as belonging to the still-bound identity.
  *
- * Clears the device's identity binding and removes the stored explicit consent choice, so reads
+ * Clears the device's identity binding and removes the stored explicit consent choice (including
+ * the CCPA opt-out set by `setCcpaOptout`, which returns to `false`), so reads
  * return the config's defaults as on a fresh install: the banner shows again, `needsConsent()` is
  * `true` and `hasUserConsent()` is `false`. The consent-changed listener fires with those defaults.
  *
@@ -274,9 +279,93 @@ export function clearUserIdentifier(): void {
     return;
   }
   storageService.clearBoundUserHash();
+  // The CCPA opt-out belongs to the logged-out user too (TRUST-2591). returnToNeutral() clears it
+  // as part of the choice; this also covers a call before initialize().
+  storageService.clearCcpaOptout();
   if (initialized && currentConfig) {
     returnToNeutral();
   }
+}
+
+/**
+ * Record the user's explicit CCPA/CPRA "Do Not Sell or Share My Personal Information" (DNSMPI)
+ * choice (TRUST-2591).
+ *
+ * Source of truth on React Native is the host app: call this from your own DNSMPI control. There
+ * is no OS-level DNSMPI signal on iOS or Android, so the SDK never detects or derives this value —
+ * not from marketing consent, the ad-tracking signal (ATT / Android ad-ID opt-out), GPC or DNT —
+ * and it does not read the deprecated IAB `IABUSPrivacy_String` key.
+ *
+ * Persists the flag on the device (`getCcpaOptout()` reads it back). It does NOT change any
+ * category preference, does not count as a consent choice for `needsConsent()` /
+ * `hasUserConsent()`, and does not fire the consent-changed listener.
+ *
+ * Cross-device write-through: pass `sync` with the logged-in user's identifier and credentials and
+ * the flag is written to their Universal Consent record together with the current local category
+ * choice, through the same write `setUserIdentifier` uses — but only when Universal Consent is
+ * enabled, `universalConsent.syncOptout` is on, the device is bound to that identifier (a
+ * `setUserIdentifier` call for it succeeded), and the user has an explicit local category choice
+ * (config defaults are never written as one). Otherwise the change is local only and rides the
+ * next Universal Consent write. A write failure rejects, like `setUserIdentifier`; the local flag
+ * stays set.
+ */
+export async function setCcpaOptout(
+  optedOut: boolean,
+  sync?: {
+    identifier: string;
+    apiKey?: string;
+    getSignature?: SignatureProvider;
+  },
+): Promise<void> {
+  assertInitialized();
+  storageService!.saveCcpaOptout(optedOut);
+
+  if (
+    sync === undefined ||
+    !isUniversalConsentEnabled() ||
+    currentConfig!.universalConsent?.syncOptout !== true
+  ) {
+    return;
+  }
+
+  const boundHash = storageService!.loadBoundUserHash();
+  if (boundHash === null) {
+    return;
+  }
+  const userHash = await universalConsentService!.userHash(currentConfig!, sync.identifier);
+  // The hash is computed natively, so a logout (and a next visitor's choice) can land while it is in
+  // flight. Re-check the binding after the await: local state read below must still belong to the
+  // identity bound when this call started, or the next visitor's choice would be written to it.
+  if (storageService!.loadBoundUserHash() !== boundHash) {
+    return;
+  }
+  const localChoice = storageService!.loadPreferences();
+  if (userHash !== boundHash || !storageService!.hasUserConsented() || localChoice === null) {
+    return;
+  }
+
+  const apiKey = resolveUniversalConsentApiKey(sync.apiKey);
+
+  await universalConsentService!.save(
+    currentConfig!,
+    sync.identifier,
+    // The RAW choice: when local state is still an adopted record's signal-reconciled view, re-sending
+    // it would store a device-local suppression (ATT, GPC) as the user's denial on every device.
+    { isCustomised: localChoice.isCustomised, cookieOptions: rawLocalChoice(localChoice) },
+    apiKey,
+    optedOut,
+    sync.getSignature,
+  );
+}
+
+/**
+ * The user's CCPA "Do Not Sell or Share" choice on this device: `true` only after an explicit
+ * `setCcpaOptout(true)` or adopting a Universal Consent record that carries it. Defaults to `false`.
+ * On React Native the local flag is the only source (there is no native DNSMPI signal).
+ */
+export function getCcpaOptout(): boolean {
+  assertInitialized();
+  return storageService!.loadCcpaOptout();
 }
 
 /** Whether cross-device Universal Consent is enabled for the loaded config. */
@@ -295,6 +384,24 @@ function assertUniversalConsentEnabled(): void {
 }
 
 /**
+ * Resolve the edge API key for a Universal Consent call (TRUST-2603). An explicit value passed by
+ * the host wins (existing integrations behave exactly as before); otherwise fall back to
+ * `universalConsent.apiKey` from config.json, which lets the key rotate server-side with no client
+ * release. Throws a VALIDATION_ERROR when neither is present. Call only after the enabled check, so
+ * `currentConfig` is loaded.
+ */
+function resolveUniversalConsentApiKey(explicit?: string): string {
+  const apiKey = explicit ?? currentConfig?.universalConsent?.apiKey;
+  if (!apiKey) {
+    throw new ConsentError(
+      'VALIDATION_ERROR',
+      'A Universal Consent API key is required: pass it explicitly or set universalConsent.apiKey in config.json',
+    );
+  }
+  return apiKey;
+}
+
+/**
  * Fetch a user's stored Universal Consent record without changing local state.
  *
  * The returned record has signals already reconciled on-device: when an opt-out signal applies,
@@ -308,12 +415,13 @@ function assertUniversalConsentEnabled(): void {
  */
 export async function fetchUniversalConsent(
   identifier: string,
-  apiKey: string,
+  apiKey?: string,
   trackingSignal: ATTStatus = readTrackingSignal(),
 ): Promise<UniversalConsentRecord | null> {
   assertUniversalConsentEnabled();
+  const resolvedApiKey = resolveUniversalConsentApiKey(apiKey);
 
-  const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
+  const record = await universalConsentService!.get(currentConfig!, identifier, resolvedApiKey);
   if (record === null) {
     return null;
   }
@@ -354,12 +462,14 @@ export async function fetchUniversalConsent(
  */
 export async function rehydrateFromUniversalConsent(
   identifier: string,
-  apiKey: string,
+  apiKey?: string,
   trackingSignal: ATTStatus = readTrackingSignal(),
 ): Promise<boolean> {
+  assertUniversalConsentEnabled();
+  const resolvedApiKey = resolveUniversalConsentApiKey(apiKey);
   const { rawCookieOptions } = await rehydrateReturningRawPreferences(
     identifier,
-    apiKey,
+    resolvedApiKey,
     trackingSignal,
     false,
   );
@@ -376,9 +486,16 @@ export async function rehydrateFromUniversalConsent(
  * cross-device record as though the user had chosen it. Returning the raw map lets the write carry
  * what the user actually consented to.
  *
- * `recordFound` is `true` whenever the server returned a record, even one with no usable consent
- * choice (`consentPreferences` null or an empty map) — `rawCookieOptions` is `null` in that case,
- * exactly as on a miss. `setUserIdentifier` needs the distinction on a login.
+ * `recordFound` is `true` whenever the server returned a record, even a signal-only one whose
+ * `consentPreferences` is absent (`null`) — `rawCookieOptions` is `null` in that case, exactly as
+ * on a miss. A record whose `consentPreferences` block is PRESENT is an answered choice and is
+ * applied, even when its `cookieOptions` map is empty (essential-only, TRUST-2961): `rawCookieOptions`
+ * is that (possibly empty) map, not `null`. `setUserIdentifier` needs the distinction on a login.
+ *
+ * `recordCcpaOptout` is the found record's stored `ccpa_optout` (`null` on a miss). When the record's
+ * consent choice is applied, the local CCPA opt-out flag is set to it too (TRUST-2591): the record is
+ * authoritative for the stored choice. On a found record with an absent choice nothing is applied
+ * here; `setUserIdentifier` decides.
  *
  * `fillFromNeutral` (login only, TRUST-2902): categories the record does not mention take the
  * neutral value (the config default, essential on) rather than being left out, so no category
@@ -391,21 +508,31 @@ async function rehydrateReturningRawPreferences(
   apiKey: string,
   trackingSignal: ATTStatus,
   fillFromNeutral: boolean,
-): Promise<{ recordFound: boolean; rawCookieOptions: Record<string, boolean> | null }> {
+): Promise<{
+  recordFound: boolean;
+  rawCookieOptions: Record<string, boolean> | null;
+  recordCcpaOptout: boolean | null;
+}> {
   assertUniversalConsentEnabled();
 
   // Goes to the service directly rather than through fetchUniversalConsent, which returns an
   // already-reconciled record. Both views are needed here: the reconciled one to persist locally,
   // the raw one to hand back for the write.
   const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
-  const rawCookieOptions = record?.consentPreferences?.cookieOptions;
 
-  // An empty map carries no category state to apply. Saving it would store preferences with
-  // nothing in them, and because isCategoryEnabled() defaults an unknown key to false, that
-  // reads back as a blanket opt-out the user never made — while also hiding the banner.
-  if (!rawCookieOptions || Object.keys(rawCookieOptions).length === 0) {
-    return { recordFound: record !== null, rawCookieOptions: null };
+  // ABSENT consent_preferences — a miss (no record), or a found signal-only record — carries no
+  // answered choice, so there is nothing to apply. A PRESENT consent_preferences block IS an
+  // answered choice even when its cookieOptions map is empty (the user accepted essential-only):
+  // TRUST-2961 — only a null/absent block, not an empty map, is "no choice". This matches iOS and
+  // web, and stops re-prompting a user who already answered essential-only on another device.
+  if (!record?.consentPreferences) {
+    return {
+      recordFound: record !== null,
+      rawCookieOptions: null,
+      recordCcpaOptout: record?.ccpaOptout ?? null,
+    };
   }
+  const rawCookieOptions = record.consentPreferences.cookieOptions ?? {};
 
   // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
   // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
@@ -419,10 +546,13 @@ async function rehydrateReturningRawPreferences(
   // On a login the record REPLACES local state: start from the neutral defaults (never the prior
   // local value) and overlay what the record carries. A fresh map either way: when no signal
   // applies `reconciled` IS the raw map handed back for the write, so it must not be mutated.
+  // An EMPTY answered map is an essential-only choice (TRUST-2961): no optional category takes its
+  // config default, or a login would enable categories a re-sync of the same record leaves off.
   const cookieOptions: Record<string, boolean> = {};
   if (fillFromNeutral) {
+    const essentialOnly = Object.keys(rawCookieOptions).length === 0;
     for (const option of ConsentResolver.getDefaults(currentConfig!).cookieOptions) {
-      cookieOptions[option.gtmKey] = option.isEnabled;
+      cookieOptions[option.gtmKey] = essentialOnly ? false : option.isEnabled;
     }
   }
   Object.assign(cookieOptions, reconciled);
@@ -443,6 +573,9 @@ async function rehydrateReturningRawPreferences(
   };
 
   storageService!.savePreferences(preferences);
+  // The stored preferences are the reconciled view; remember the raw choice they came from, so a
+  // later write-through that re-sends this adopt sends what the user chose, not the suppression.
+  storageService!.saveAdoptedRawChoice(rawCookieOptions);
   // Stamp the CURRENT config version, not the record's. needsConsent() compares the stored
   // version against the running config, so carrying a stale version over from the writing
   // device would re-prompt immediately and undo the rehydration we just did.
@@ -451,9 +584,112 @@ async function rehydrateReturningRawPreferences(
   // auto-persists defaults). Without it the rehydrated state would apply to category reads but
   // the banner would still show, which is the bug this method exists to fix.
   storageService!.setUserConsented(true);
+  // The record's stored CCPA opt-out replaces the local flag along with the categories (an absent
+  // field decodes to false). Not derived from anything: it is the user's recorded DNSMPI choice.
+  // Outside a login, adopt it only with the syncOptout gate on: with the gate off the SDK never
+  // puts the choice on the record (it always says false), so adopting it would erase a local-only
+  // setCcpaOptout(true) on every re-sync. Same rule as the web/iOS/Android SDKs.
+  if (fillFromNeutral || currentConfig!.universalConsent?.syncOptout === true) {
+    storageService!.saveCcpaOptout(record!.ccpaOptout);
+  }
 
   eventEmitter.emit(preferences);
-  return { recordFound: true, rawCookieOptions };
+  return { recordFound: true, rawCookieOptions, recordCcpaOptout: record!.ccpaOptout };
+}
+
+/**
+ * The outcome of a `setUserIdentifier` call once the read has completed, as a tagged action so the
+ * identity binding can be applied in exactly one place (TRUST-3075). The read has already adopted
+ * any found record into local state; this only describes what, if anything, is written and which
+ * local flags are touched before binding.
+ *
+ * - `bindOnly` — no cross-device write. Optionally return local state to neutral (a found record's
+ *   existence overrides a pre-login or other-user choice) and/or overwrite the local CCPA flag from
+ *   the record (`adoptCcpaFromRecord`: a boolean overwrites it, `null` leaves it untouched).
+ * - `write` — write the current local choice through, then bind.
+ */
+type IdentityBindDecision =
+  | { kind: 'bindOnly'; returnToNeutral: boolean; adoptCcpaFromRecord: boolean | null }
+  | { kind: 'write' };
+
+/** The inputs the `setUserIdentifier` decision reads: the read result and the captured local state. */
+interface IdentityBindInput {
+  /** A record (of any shape, including signal-only) came back from the read. */
+  recordFound: boolean;
+  /** The record carried an answered consent choice the read adopted (`rawCookieOptions !== null`). */
+  hasUsablePrefs: boolean;
+  /** The device was already bound to this identity, so any local change was made after login. */
+  isResync: boolean;
+  /** The device was bound to a DIFFERENT identity (its local state belongs to that user). */
+  boundToOther: boolean;
+  /** `hasUserConsented()` at entry — the banner/`savePreferences` flag, before the read overwrote it. */
+  hadConsentedFlag: boolean;
+  /** An explicit local category choice exists for THIS identity (not defaults, not another user's). */
+  hasExplicitChoice: boolean;
+  /** The record's stored CCPA opt-out (`null` when absent). */
+  recordCcpaOptout: boolean | null;
+  /** `universalConsent.syncOptout` — whether the CCPA flag is carried on the wire for this config. */
+  syncOptout: boolean;
+}
+
+/**
+ * Decide what `setUserIdentifier` does after the read, as a pure function of the read result and the
+ * captured local state (the TRUST-2902 rule; see `setUserIdentifier`'s JSDoc for the full table).
+ * Side-effect-free: every branch returns a tagged action and the caller performs the side effects,
+ * so the "bind on every success path, never on a failure path" invariant is enforced in one place
+ * (bind once, after the executor) rather than positionally at each exit (TRUST-3075).
+ */
+export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecision {
+  const {
+    recordFound,
+    hasUsablePrefs,
+    isResync,
+    boundToOther,
+    hadConsentedFlag,
+    hasExplicitChoice,
+    recordCcpaOptout,
+    syncOptout,
+  } = input;
+
+  // LOGIN + FOUND signal-only record (consent_preferences ABSENT — TRUST-2961: a present but empty
+  // map is an answered essential-only choice, adopted by the read as usable prefs, not here). There
+  // is nothing to adopt, but the record's existence means the device's own state must not be
+  // attached: drop it to neutral if anything explicit or another user's state is stored (a no-op
+  // when local is already neutral). The record is authoritative for the stored CCPA flag. No write.
+  if (!hasUsablePrefs && recordFound && !isResync) {
+    return {
+      kind: 'bindOnly',
+      returnToNeutral: hadConsentedFlag || boundToOther,
+      adoptCcpaFromRecord: recordCcpaOptout === true,
+    };
+  }
+
+  // FOUND usable prefs: the read already adopted the record into local state. A LOGIN lets the
+  // record win over any pre-login choice; a RE-SYNC with no local change has nothing to re-POST.
+  // Either binds without writing. A RE-SYNC with an explicit local change writes it through.
+  if (hasUsablePrefs) {
+    if (!isResync || !hasExplicitChoice) {
+      return { kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null };
+    }
+    return { kind: 'write' };
+  }
+
+  // No usable prefs (a miss, or a found signal-only record on a RE-SYNC) and nothing explicit to
+  // attach: write nothing — config defaults are never seeded as a choice. A device still bound to
+  // someone else returns to neutral so their state does not linger for this user. A RE-SYNC of a
+  // found signal-only record adopts its CCPA flag under the syncOptout gate.
+  if (!hasExplicitChoice) {
+    const adoptCcpa = recordFound && isResync && syncOptout;
+    return {
+      kind: 'bindOnly',
+      returnToNeutral: boundToOther,
+      adoptCcpaFromRecord: adoptCcpa ? recordCcpaOptout === true : null,
+    };
+  }
+
+  // A miss (or a found signal-only record on a RE-SYNC) WITH an explicit local choice: write it
+  // through — sync-on-change over a found record, or this identity's first record on a miss.
+  return { kind: 'write' };
 }
 
 /**
@@ -473,9 +709,11 @@ async function rehydrateReturningRawPreferences(
  * - LOGIN + FOUND record: the record wins. It REPLACES local state — categories it carries take
  *   its (signal-reconciled) value, every other category takes the config default (essential on),
  *   never the prior local value — and nothing is written, even if the device holds an explicit
- *   pre-login choice; that choice is dropped. A found record with no consent choice (signal-only)
- *   returns local state to neutral if anything explicit or another user's state is stored, and is
- *   a no-op otherwise; nothing is written either way.
+ *   pre-login choice; that choice is dropped. A present consent_preferences block is an answered
+ *   choice even when its cookieOptions map is empty (essential-only, TRUST-2961). A found record
+ *   whose consent_preferences is ABSENT (signal-only) returns local state to neutral if anything
+ *   explicit or another user's state is stored, and is a no-op otherwise; nothing is written either
+ *   way.
  * - LOGIN + MISS + EXPLICIT local choice: the choice is attached — written as this identity's
  *   first record.
  * - LOGIN + MISS + no explicit choice: nothing is written; config defaults are never seeded as a
@@ -485,6 +723,11 @@ async function rehydrateReturningRawPreferences(
  * - RE-SYNC + FOUND record: adopt it when there is no local change; otherwise write the local
  *   choice through (sync-on-change). The write NEVER re-POSTs the fetched record.
  * - RE-SYNC + MISS: an explicit local choice is written; otherwise nothing is.
+ *
+ * The CCPA opt-out flag (`setCcpaOptout`) follows the same rule: a found record's `ccpa_optout`
+ * replaces the local flag (a pre-login value is dropped), and every write carries the raw local
+ * flag. A `setCcpaOptout` call on its own is not an explicit category choice, so it never makes a
+ * login miss write.
  *
  * "Explicit" means the user actually chose on this device (`savePreferences`, `acceptAll`,
  * `rejectAll`, the banner) — the `hasUserConsented()` flag, not merely stored preferences, since
@@ -520,14 +763,15 @@ async function rehydrateReturningRawPreferences(
 export async function setUserIdentifier(
   identifier: string,
   options: {
-    apiKey: string;
+    apiKey?: string;
     getSignature?: SignatureProvider;
     trackingSignal?: ATTStatus;
-  },
+  } = {},
 ): Promise<void> {
   assertUniversalConsentEnabled();
 
-  const { apiKey, getSignature } = options;
+  const apiKey = resolveUniversalConsentApiKey(options.apiKey);
+  const { getSignature } = options;
   const trackingSignal = options.trackingSignal ?? readTrackingSignal();
 
   // Hash first: a VALIDATION_ERROR / NATIVE_ERROR fails fast here with no read, no write and no
@@ -544,6 +788,11 @@ export async function setUserIdentifier(
   const localChoice = storageService!.loadPreferences();
   const hadConsentedFlag = storageService!.hasUserConsented();
   const hasExplicitChoice = hadConsentedFlag && localChoice !== null && !boundToOther;
+  // When the local choice is itself an earlier adopt, storage holds its signal-reconciled view: the
+  // raw map it came from is what a write must carry. Captured here because the read replaces it.
+  const localRawChoice = hasExplicitChoice ? rawLocalChoice(localChoice!) : null;
+  // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
+  const localCcpaOptout = storageService!.loadCcpaOptout();
 
   // Read first. A genuine MISS comes back as `null`. A read FAILURE throws, and MUST propagate:
   // a rich remote record may exist that we simply could not read, and the server never merges — a
@@ -552,7 +801,11 @@ export async function setUserIdentifier(
   // itself would succeed. That is the cross-device corruption class TRUST-2491 fixed on the
   // read-SUCCESS path; do not reopen it through the read-FAILURE branch. Surfacing the error lets
   // the caller retry, which re-reads first. The binding is not touched on this path.
-  const { recordFound, rawCookieOptions: rawFromRecord } = await rehydrateReturningRawPreferences(
+  const {
+    recordFound,
+    rawCookieOptions: rawFromRecord,
+    recordCcpaOptout,
+  } = await rehydrateReturningRawPreferences(
     identifier,
     apiKey,
     trackingSignal,
@@ -560,67 +813,81 @@ export async function setUserIdentifier(
     !isResync,
   );
 
-  if (rawFromRecord === null && recordFound && !isResync) {
-    // LOGIN + FOUND record with no consent choice (signal-only / empty preferences). There is
-    // nothing to adopt, but the record's existence means the device's own state must not be
-    // attached either: drop it to neutral if anything explicit or another user's state is stored
-    // (no-op, and no listener, when local is already neutral). Never a write.
-    if (hadConsentedFlag || boundToOther) {
+  // The read is done and any found record is already applied to local state. The rest is a pure
+  // decision over the read result and the captured local state (see `decideIdentityBind`): a
+  // bind-only no-op/adopt, or a write-through. Keeping the decision pure lets the identity binding
+  // run in ONE place below — on every success shape, never on a read or write failure (both throw
+  // before it) and never more than once — rather than being hand-placed at each exit.
+  const decision = decideIdentityBind({
+    recordFound,
+    hasUsablePrefs: rawFromRecord !== null,
+    isResync,
+    boundToOther,
+    hadConsentedFlag,
+    hasExplicitChoice,
+    recordCcpaOptout,
+    syncOptout: currentConfig!.universalConsent?.syncOptout === true,
+  });
+
+  if (decision.kind === 'write') {
+    // Write the user's CURRENT LOCAL choice: a re-sync's sync-on-change over a found record, or an
+    // explicit choice attached to a missing record. NEVER `rawFromRecord`, which would discard the
+    // choice made on this device. The choice was captured BEFORE rehydrate, so it is RAW and no
+    // device signal leaks into the store.
+    const universalPrefs: UniversalConsentPreferences = {
+      isCustomised: localChoice!.isCustomised,
+      cookieOptions: localRawChoice!,
+    };
+
+    // The local CCPA opt-out rides the write with the categories. A re-sync rehydrate above replaced
+    // the local flag with the record's; put the user's own value back so local matches the write.
+    storageService!.saveCcpaOptout(localCcpaOptout);
+
+    await universalConsentService!.save(
+      currentConfig!,
+      identifier,
+      universalPrefs,
+      apiKey,
+      // The RAW local flag, set only by setCcpaOptout or a record adopt — never derived from the
+      // tracking signal, ATT or marketing consent (TRUST-2591). The service applies the syncOptout gate.
+      localCcpaOptout,
+      getSignature,
+    );
+  } else {
+    // No write. A found record's existence can override a pre-login or other-user local choice
+    // (returnToNeutral), and/or the record is authoritative for the stored CCPA flag
+    // (adoptCcpaFromRecord). Apply them in that order — matching what the hand-placed success
+    // branches did — leaving a plain adopt (both false/null) as bind-only.
+    if (decision.returnToNeutral) {
       returnToNeutral();
     }
-    storageService!.saveBoundUserHash(userHash);
-    return;
-  }
-
-  if (rawFromRecord !== null) {
-    // FOUND: the rehydrate above already adopted the record into local state. On a LOGIN the
-    // record wins over any pre-login choice, so nothing is written. On a RE-SYNC with no local
-    // change, re-POSTing would only echo state the edge already holds.
-    if (!isResync || !hasExplicitChoice) {
-      storageService!.saveBoundUserHash(userHash);
-      return;
+    if (decision.adoptCcpaFromRecord !== null) {
+      storageService!.saveCcpaOptout(decision.adoptCcpaFromRecord);
     }
-  } else if (!hasExplicitChoice) {
-    // MISS with nothing explicit to attach: write nothing — config defaults are not a choice and
-    // must not be seeded as one. A device still bound to someone else returns to neutral so their
-    // state does not linger for this user; otherwise local state is already the default.
-    if (boundToOther) {
-      returnToNeutral();
-    }
-    storageService!.saveBoundUserHash(userHash);
-    return;
   }
 
-  // Write the user's CURRENT LOCAL choice: a re-sync's sync-on-change over a found record, or an
-  // explicit choice attached to a missing record. NEVER `rawFromRecord`, which would discard the
-  // choice made on this device. The choice was captured BEFORE rehydrate, so it is RAW and no
-  // device signal leaks into the store.
-  const rawMap: Record<string, boolean> = {};
-  for (const option of localChoice!.cookieOptions) {
-    rawMap[option.gtmKey] = option.isEnabled;
-  }
-
-  const universalPrefs: UniversalConsentPreferences = {
-    isCustomised: localChoice!.isCustomised,
-    cookieOptions: rawMap,
-  };
-
-  await universalConsentService!.save(
-    currentConfig!,
-    identifier,
-    universalPrefs,
-    apiKey,
-    // NOT derived from the tracking signal. `ccpa_optout` records a CCPA/US do-not-sell choice;
-    // the device ad-tracking signal is a narrower ad-personalization signal, and treating one as
-    // the other would write a legal opt-out the user never made. React Native has no source for
-    // this value, matching iOS and Android.
-    false,
-    getSignature,
-  );
-
-  // Bind only after the write succeeds: a failed write must not bind, so a retry is still
-  // recognised as a login and re-evaluated from scratch.
+  // Bind exactly once, on every success path. A read failure (the rehydrate above) or a write
+  // failure (the awaited save) propagates before this line, so a failed call never binds and a
+  // retry is still recognised as a login and re-evaluated from scratch.
   storageService!.saveBoundUserHash(userHash);
+}
+
+/**
+ * The RAW category map a write-through sends for the stored local choice: the adopted record's raw
+ * map while the stored preferences are still that adopt's signal-reconciled view, else the stored
+ * preferences themselves (an explicit choice made on this device is already raw).
+ */
+function rawLocalChoice(localChoice: ConsentPreferences): Record<string, boolean> {
+  return storageService!.loadAdoptedRawChoice() ?? toRawCookieMap(localChoice);
+}
+
+/** The `{ gtmKey: isEnabled }` map a Universal Consent write carries, from local preferences. */
+function toRawCookieMap(prefs: ConsentPreferences): Record<string, boolean> {
+  const map: Record<string, boolean> = {};
+  for (const option of prefs.cookieOptions) {
+    map[option.gtmKey] = option.isEnabled;
+  }
+  return map;
 }
 
 export function hasUserConsent(): boolean {
