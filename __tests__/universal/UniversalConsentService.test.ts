@@ -249,7 +249,59 @@ describe('UniversalConsentService', () => {
         platform: 'react-native',
         policy_name: 'CPRA',
         config_version: 'cc959465-747d-4c81-8bc1-5dcd34dc3756',
+        // No decision time given: the request timestamp stands in (the edge's own default).
+        is_explicit: true,
+        decision_ts: Number(
+          (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers[
+            'X-DG-Timestamp'
+          ],
+        ),
       });
+    });
+
+    it('sends the given decision_ts in the body and signs provDigest over it (TRUST-3225)', async () => {
+      const fetchMock = mockFetch(200, '');
+      const getSignature = jest.fn().mockResolvedValue(SIGNATURE);
+      const decisionTs = 1_700_000_000;
+
+      await service.save(
+        config,
+        'uc-user-7f3a9c',
+        prefs,
+        'api-key-123',
+        false,
+        getSignature,
+        decisionTs,
+      );
+
+      const init = fetchMock.mock.calls[0][1] as { body: string; headers: Record<string, string> };
+      const body = JSON.parse(init.body);
+      expect(body.is_explicit).toBe(true);
+      expect(body.decision_ts).toBe(decisionTs);
+      // The request timestamp is still now; only the provenance carries the choice's time.
+      expect(init.headers['X-DG-Timestamp']).not.toBe(String(decisionTs));
+      expect(mockSha256Hex).toHaveBeenCalledWith(`true\n${decisionTs}\n`);
+      // Pinned digest for an explicit decision_ts: hex(SHA-256("true\n1700000000\n")).
+      const payload = getSignature.mock.calls[0][0];
+      expect(payload.stringToSign.split(':')[4]).toBe(nodeSha256Hex('true\n1700000000\n'));
+    });
+
+    it('sends decision_ts on an API-key-only write too', async () => {
+      const fetchMock = mockFetch(200, '');
+
+      await service.save(
+        config,
+        'uc-user-7f3a9c',
+        prefs,
+        'api-key-123',
+        false,
+        undefined,
+        1_700_000_000,
+      );
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+      expect(body.is_explicit).toBe(true);
+      expect(body.decision_ts).toBe(1_700_000_000);
     });
 
     it('attaches the callback signature/keyId plus the SDK-owned timestamp and 32-hex nonce', async () => {

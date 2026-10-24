@@ -4,6 +4,7 @@ import type { NetworkService } from '../network/NetworkService';
 import { generateNonceHex } from '../storage/uuid';
 import { computeUserHash } from './userHash';
 import { sha256Hex } from './sha256';
+import { nowSeconds } from './decisionTs';
 import type {
   SignatureProvider,
   UniversalConsentPreferences,
@@ -192,6 +193,10 @@ export class UniversalConsentService {
    *   `setCcpaOptout` or adopted from a record). Written as `true` only when the
    *   `universalConsent.syncOptout` gate is also on. Never derived from marketing consent or the
    *   device's ad-tracking signal — that signal is narrower than a do-not-sell choice.
+   * @param decisionTs when the user made the choice being written, in unix seconds (TRUST-3225). Sent
+   *   as the body's `decision_ts` with `is_explicit: true`, and signed into provDigest. When unknown
+   *   (`null`/omitted: a choice stored before the SDK recorded decision times) the request timestamp
+   *   stands in, which is exactly what the edge defaults a provenance-free write to.
    */
   async save(
     config: ConsentConfig,
@@ -200,26 +205,32 @@ export class UniversalConsentService {
     apiKey: string,
     ccpaOptout: boolean,
     getSignature?: SignatureProvider,
+    decisionTs?: number | null,
   ): Promise<void> {
     const projectId = UniversalConsentService.requireProjectId(config);
     const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
 
     const headers: Record<string, string> = { 'X-DG-Api-Key': apiKey };
 
+    // The SDK owns the timestamp (and nonce, below) and builds the string-to-sign; the customer's
+    // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
+    const timestamp = nowSeconds();
+    // The write carries the TRUE time of the choice (TRUST-3225). Sending the request time instead
+    // would let a stale device's re-sync out-rank a newer revocation made on another device, since
+    // the edge's per-category merge is decision-time last-writer-wins.
+    const effectiveDecisionTs = decisionTs ?? timestamp;
+
     if (getSignature) {
-      // The SDK owns the timestamp and nonce and builds the string-to-sign; the customer's
-      // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
-      const timestamp = Math.floor(Date.now() / 1000);
       const nonce = generateNonceHex();
 
       // Bind the write's provenance (is_explicit, decision_ts, actor_id) into the signed string so
-      // an intermediary cannot rewrite it on an otherwise-valid request. This SDK sends no
-      // provenance in the body, so it signs the RESOLVED-DEFAULT triple the edge synthesizes for a
-      // provenance-free write: is_explicit → "true", decision_ts → this same X-DG-Timestamp,
-      // actor_id → "". `\n` (U+000A) delimits the fields; actor_id is terminal so an embedded
-      // delimiter cannot forge the digest. Must stay byte-identical to the edge/other SDKs — the
-      // signing-vectors corpus is the enforcement.
-      const provInput = `true\n${timestamp}\n`;
+      // an intermediary cannot rewrite it on an otherwise-valid request. The body carries
+      // `is_explicit: true` and `decision_ts` and omits `actor_id`, so the triple the edge resolves
+      // — and this digest — is is_explicit "true", decision_ts, actor_id "". `\n` (U+000A) delimits
+      // the fields; actor_id is terminal so an embedded delimiter cannot forge the digest. Must stay
+      // byte-identical to the edge/other SDKs — the signing-vectors corpus is the enforcement. With
+      // an unknown decision time this is byte-identical to the old resolved-default digest.
+      const provInput = `true\n${effectiveDecisionTs}\n`;
       const provDigest = await sha256Hex(provInput);
       const stringToSign = `${config.dgCustomerId}:${userHash}:${timestamp}:${nonce}:${provDigest}`;
 
@@ -257,6 +268,8 @@ export class UniversalConsentService {
       platform: PLATFORM,
       policy_name: config.consentPolicy.name,
       config_version: config.version,
+      is_explicit: true,
+      decision_ts: effectiveDecisionTs,
     });
 
     const response = await this.network.request({

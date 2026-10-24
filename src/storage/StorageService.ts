@@ -3,6 +3,7 @@ import { MMKV } from 'react-native-mmkv';
 import type { ConsentPreferences, ConsentConfig } from '../types';
 import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
 import { runMigrations } from './migrations';
+import { DECISION_TS_STORED_TOLERANCE_SECONDS, nowSeconds } from '../universal/decisionTs';
 
 /**
  * Synchronous storage layer backed by MMKV.
@@ -68,6 +69,7 @@ export class StorageService {
     this.storage.delete(STORAGE_KEYS.USER_CONSENTED);
     this.clearAdoptedRawChoice();
     this.clearCcpaOptout();
+    this.clearDecisionTs();
   }
 
   /**
@@ -98,9 +100,73 @@ export class StorageService {
     this.storage.delete(STORAGE_KEYS.ADOPTED_RAW_CHOICE);
   }
 
-  /** Persist the user's explicit CCPA "Do Not Sell or Share" choice. */
-  saveCcpaOptout(optedOut: boolean): void {
+  /**
+   * Record WHEN the stored choice was made, as unix seconds (TRUST-3225). With no argument it is a
+   * choice made now. A Universal Consent adopt passes the adopted record's time instead.
+   *
+   * The default is MONOTONIC: never earlier than the previous stamp + 1 (capped so it always reads
+   * back), so two choices in the same second, or a choice made right after adopting a record stamped
+   * slightly ahead of this clock, still order correctly. This is the only clock-skew protection.
+   * Times from different devices are compared as-is, so skew (up to the edge's ~300 s clamp) can
+   * still mis-order changes made within that window of each other.
+   */
+  saveDecisionTs(decisionTs?: number): void {
+    if (decisionTs !== undefined) {
+      this.storage.set(STORAGE_KEYS.DECISION_TS, decisionTs);
+      return;
+    }
+    const now = nowSeconds();
+    const previous = this.loadDecisionTs();
+    const monotonic =
+      previous !== null
+        ? Math.min(Math.max(now, previous + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
+        : now;
+    this.storage.set(STORAGE_KEYS.DECISION_TS, monotonic);
+  }
+
+  /**
+   * When the stored choice was made, or `null` when unknown: nothing is stored (no choice, or one
+   * stored before TRUST-3225), the value is not a non-negative safe integer, or it is more than
+   * DECISION_TS_STORED_TOLERANCE_SECONDS ahead of this clock. A stamp that far ahead is bogus (the
+   * clock was ahead and has since been corrected) and would otherwise out-rank every record forever.
+   */
+  loadDecisionTs(): number | null {
+    const value = this.storage.getNumber(STORAGE_KEYS.DECISION_TS);
+    if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
+      return null;
+    }
+    return value <= nowSeconds() + DECISION_TS_STORED_TOLERANCE_SECONDS ? value : null;
+  }
+
+  /** The stored choice is no longer one anyone made at a known time. */
+  clearDecisionTs(): void {
+    this.storage.delete(STORAGE_KEYS.DECISION_TS);
+  }
+
+  /**
+   * Persist the user's explicit CCPA "Do Not Sell or Share" choice. Every write states whether the
+   * value is pending sync (TRUST-3308): only setCcpaOptout's not-yet-written choice on a bound device
+   * is; anything else (adopting a record, the write-through restore of a synced value) is not.
+   */
+  saveCcpaOptout(optedOut: boolean, pendingSync = false): void {
     this.storage.set(STORAGE_KEYS.CCPA_OPTOUT, optedOut);
+    if (pendingSync) {
+      this.storage.set(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC, true);
+    } else {
+      this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
+    }
+  }
+
+  /** Whether the stored CCPA flag is a setCcpaOptout choice that has not reached the record yet. */
+  hasPendingCcpaOptoutSync(): boolean {
+    return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC) ?? false;
+  }
+
+  /** A write carrying `sent` succeeded: a pending choice reached the record, unless it changed since. */
+  markCcpaOptoutSynced(sent: boolean): void {
+    if (this.hasPendingCcpaOptoutSync() && this.loadCcpaOptout() === sent) {
+      this.saveCcpaOptout(sent);
+    }
   }
 
   /** The stored CCPA opt-out choice; `false` ("not opted out") when none is stored. */
@@ -110,6 +176,7 @@ export class StorageService {
 
   clearCcpaOptout(): void {
     this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT);
+    this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
   }
 
   saveBoundUserHash(userHash: string): void {
