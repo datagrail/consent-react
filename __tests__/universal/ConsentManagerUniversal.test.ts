@@ -2260,6 +2260,21 @@ describe('ConsentManager — Universal Consent', () => {
         expect(getCcpaOptout()).toBe(true);
       });
 
+      it('a re-sync over a MISS recreates the record with the local opt-out', async () => {
+        const fetchMock = await initThenStub(configWithGate(true), response(200, ''), notFound());
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        // A synced opt-out (not pending): the record was since deleted.
+        deviceStorage().saveCcpaOptout(true);
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        expect(postBody(posts[0]).ccpa_optout).toBe(true);
+        expect(getCcpaOptout()).toBe(true);
+      });
+
       it('re-sync write-through with nothing pending keeps the record opt-out locally', async () => {
         const fetchMock = await initThenStub(
           configWithGate(true),

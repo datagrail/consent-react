@@ -329,8 +329,8 @@ export function clearUserIdentifier(): void {
  * `hasUserConsent()`, and does not fire the consent-changed listener.
  *
  * Cross-device write-through: pass `sync` with the logged-in user's identifier and credentials and
- * the flag is written to their Universal Consent record together with the current local category
- * choice, through the same write `setUserIdentifier` uses — but only when Universal Consent is
+ * the flag is written to their Universal Consent record as a CCPA-only write dated at the call,
+ * after the current local category choice is written at its own time — but only when Universal Consent is
  * enabled, `universalConsent.syncOptout` is on, the device is bound to that identifier (a
  * `setUserIdentifier` call for it succeeded), and the user has an explicit local category choice
  * (config defaults are never written as one). Otherwise the change is local only and rides the
@@ -714,8 +714,7 @@ async function rehydrateReturningRawPreferences(
  *   the record (`adoptCcpaFromRecord`: a boolean overwrites it, `null` leaves it untouched).
  * - `write` — write the current local choice through, then bind.
  * - `flushCcpa` — a RE-SYNC adopted the record's categories, but a setCcpaOptout choice is still
- *   pending sync: write the record's own raw choice back with the local CCPA flag, then bind
- *   (TRUST-3308). Same flush as iOS and Android.
+ *   pending sync: send it as a CCPA-only write dated when it was made, then bind (TRUST-3308).
  */
 type IdentityBindDecision =
   | { kind: 'bindOnly'; returnToNeutral: boolean; adoptCcpaFromRecord: boolean | null }
@@ -793,8 +792,8 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
   // to one category can lose to an even newer change elsewhere (per-category times on GET are
   // TRUST-3226). An unknown local time, an unusable updated_at, and a same-second tie all adopt.
   // A RE-SYNC that adopts can still owe the record a write: a setCcpaOptout choice that has not
-  // reached it yet (no `sync`, or a failed write-through) is a local change too. It is flushed with
-  // the record's own raw categories, so the choice another device made stays as it is. Only with an
+  // reached it yet (no `sync`, or a failed write-through) is a local change too. It is flushed as a
+  // CCPA-only write, so the categories another device chose stay as they are. Only with an
   // explicit local choice (config defaults are never written) and the syncOptout gate on.
   if (hasUsablePrefs) {
     if (isResync && hasExplicitChoice && localIsNewerThanRecord) {
@@ -990,7 +989,9 @@ export async function setUserIdentifier(
     // the categories' time, so sending it would let this device revoke a newer opt-out made on
     // another device. It leaves the record's flag alone (a pending choice is flushed by its own
     // CCPA-only write below) and keeps the record's flag locally unless a choice is pending.
-    if (!isResync || localCcpaPendingSync) {
+    // A write-through over a FOUND record on a re-sync; a miss (login or re-sync) creates the record.
+    const isFoundResyncWrite = isResync && recordFound;
+    if (!isFoundResyncWrite || localCcpaPendingSync) {
       storageService!.saveCcpaOptout(localCcpaOptout, localCcpaPendingSince);
     }
     // Same for the decision time: the write carries the local choice, so local keeps its time.
@@ -1023,13 +1024,13 @@ export async function setUserIdentifier(
       // The RAW local flag, set only by setCcpaOptout or a record adopt — never derived from the
       // tracking signal, ATT or marketing consent (TRUST-2591). The service applies the syncOptout
       // gate. `null` on a RE-SYNC: the record's flag is left as it is (see above).
-      isResync ? null : localCcpaOptout,
+      isFoundResyncWrite ? null : localCcpaOptout,
       getSignature,
       // The TRUE time of the local choice (TRUST-3225); unknown falls back to the request time.
       localDecisionTs,
     );
     if (currentConfig!.universalConsent?.syncOptout === true) {
-      if (!isResync) {
+      if (!isFoundResyncWrite) {
         // The flag reached the record (the service only carries it under the syncOptout gate).
         storageService!.markCcpaOptoutSynced(localCcpaOptout, localCcpaPendingSince);
       } else if (localCcpaPendingSince !== null) {
