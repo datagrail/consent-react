@@ -2726,6 +2726,22 @@ describe('ConsentManager — Universal Consent', () => {
         expect(getCcpaOptout()).toBe(true);
       });
 
+      it('a logout while the user hash is computed: no read, nothing applied, not bound', async () => {
+        const fetchMock = await initThenStub(configWithGate(true), found({ ccpa_optout: true }));
+        mockComputeUserHash.mockImplementationOnce(async () => {
+          // The host logs out while the native hash is still resolving.
+          clearUserIdentifier();
+          return USER_HASH;
+        });
+
+        await setUserIdentifier(OPAQUE_ID, { apiKey: API_KEY, getSignature });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(hasUserConsent()).toBe(false);
+        expect(getCcpaOptout()).toBe(false);
+        expect(deviceStorage().loadBoundUserHash()).toBeNull();
+      });
+
       it('a logout while the login read is in flight: nothing applied, kept or bound', async () => {
         const fetchMock = await initThenStub(configWithGate(true));
         fetchMock.mockImplementationOnce(() => {

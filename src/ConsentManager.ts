@@ -1024,6 +1024,9 @@ export async function setUserIdentifier(
   } = {},
 ): Promise<void> {
   assertUniversalConsentEnabled();
+  // Captured before the first await: a logout (clearUserIdentifier, reset) from here on means this
+  // call applies nothing and does not bind, whether it lands during the hash, the read or the write.
+  const epochAtEntry = identityEpoch;
 
   const apiKey = resolveUniversalConsentApiKey(options.apiKey);
   const { getSignature } = options;
@@ -1032,6 +1035,10 @@ export async function setUserIdentifier(
   // Hash first: a VALIDATION_ERROR / NATIVE_ERROR fails fast here with no read, no write and no
   // change to the binding.
   const userHash = await universalConsentService!.userHash(currentConfig!, identifier);
+  // Logged out while hashing: the device is neutral now, so no read, no write and no bind.
+  if (identityEpoch !== epochAtEntry) {
+    return;
+  }
   const boundHash = storageService!.loadBoundUserHash();
   const isResync = boundHash === userHash;
   const boundToOther = boundHash !== null && !isResync;
@@ -1049,8 +1056,6 @@ export async function setUserIdentifier(
   // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
   let localCcpaOptout = storageService!.loadCcpaOptout();
   let localCcpaPendingSince = storageService!.loadCcpaOptoutPendingSince();
-  // Captured with the binding: a logout from here on means this call must not bind (see below).
-  const epochAtEntry = identityEpoch;
   // ...and when the local choice was made (TRUST-3225): adopting a found record overwrites it with
   // the record's time. Only meaningful for an explicit choice; `null` = unknown.
   const localDecisionTs = hasExplicitChoice ? storageService!.loadDecisionTs() : null;
