@@ -497,6 +497,42 @@ describe('UniversalConsentService', () => {
       expect(body.ccpa_optout).toBe(false);
     });
 
+    it('saveCcpaOptout sends nothing with syncOptout off: a dated "not opted out" must never reach the record', async () => {
+      const fetchMock = mockFetch(200, '');
+      expect(config.universalConsent?.syncOptout).toBe(false);
+
+      await expect(
+        service.saveCcpaOptout(config, 'uc-user-7f3a9c', 'api-key-123', {
+          ccpaOptout: false,
+          decisionTs: 1_700_000_000,
+          getSignature: async () => SIGNATURE,
+        }),
+      ).resolves.toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('saveCcpaOptout sends a CCPA-only body dated at the choice', async () => {
+      const fetchMock = mockFetch(200, '');
+      config.universalConsent = { enabled: true, syncOptout: true };
+
+      await expect(
+        service.saveCcpaOptout(config, 'uc-user-7f3a9c', 'api-key-123', {
+          ccpaOptout: true,
+          decisionTs: 1_700_000_000,
+        }),
+      ).resolves.toEqual({ staleFields: [] });
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
+      expect(body).toEqual({
+        customer_id: config.dgCustomerId,
+        user_hash: expect.any(String),
+        consent_preferences: { cookieOptions: {} },
+        ccpa_optout: true,
+        is_explicit: true,
+        decision_ts: 1_700_000_000,
+      });
+    });
+
     it('throws NETWORK_ERROR on a non-2xx', async () => {
       mockFetch(403, JSON.stringify({ error: 'invalid signature' }));
 

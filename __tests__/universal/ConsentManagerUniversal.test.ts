@@ -845,6 +845,46 @@ describe('ConsentManager — Universal Consent', () => {
       );
     });
 
+    it('a re-sync write-through never tells listeners the older record re-enabled a category the newer local choice turned off', async () => {
+      // Record ON, newer local OFF: the read must not emit the record's marketing ON before the
+      // write-through puts the local OFF back, or a host gating a tracking SDK on the listener would
+      // start it, undoing the newer revocation.
+      mockFetchSequence(universalConfigJson, response(200, ''));
+      await initUniversal();
+      await savePreferences({
+        isCustomised: true,
+        cookieOptions: [
+          { gtmKey: 'dg-category-essential', isEnabled: true },
+          { gtmKey: 'dg-category-marketing', isEnabled: false },
+        ],
+      });
+      bindDeviceTo(USER_HASH);
+      const listener = jest.fn();
+      onConsentChanged(listener);
+      global.fetch = jest
+        .fn()
+        .mockResolvedValueOnce(
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': true },
+            },
+            updated_at: '2000-01-01T00:00:00Z',
+          }),
+        )
+        .mockResolvedValueOnce(response(200, ''));
+
+      await setUserIdentifier('uc-user-7f3a9c', { apiKey: API_KEY, getSignature });
+
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(listener).toHaveBeenCalledTimes(1);
+      for (const [prefs] of listener.mock.calls as [ConsentPreferences][]) {
+        expect(
+          prefs.cookieOptions.find((o) => o.gtmKey === 'dg-category-marketing')?.isEnabled,
+        ).toBe(false);
+      }
+    });
+
     it('a re-sync write-through keeps the local isCustomised, matching the write (not the adopt)', async () => {
       // rejectAll stores isCustomised:false. The read's adopt forces true for the record; the restore
       // puts back the local choice's own flag, which is what the write carries.
@@ -1619,7 +1659,9 @@ describe('ConsentManager — Universal Consent', () => {
         ccpaPendingSync: true,
       };
       expect(decideIdentityBind(resyncAdopt)).toEqual({ kind: 'flushCcpa' });
-      // A newer local choice is a full write, which carries the flag anyway.
+      // A newer local choice is a write-through. Over a found record it omits the CCPA flag and the
+      // setUserIdentifier executor flushes the pending choice after it (TRUST-3391 moves that
+      // choice into this decision).
       expect(decideIdentityBind({ ...resyncAdopt, localIsNewerThanRecord: true })).toEqual({
         kind: 'write',
       });
@@ -2148,8 +2190,65 @@ describe('ConsentManager — Universal Consent', () => {
         expect(postBody(ucPosts(fetchMock)[1]).ccpa_optout).toBe(false);
       });
 
-      it('reports a CCPA write the record already outranks as not written, and settles it', async () => {
+      it('a CCPA write the record already outranks resolves false and adopts the record flag', async () => {
+        // The same settle as a re-sync flush: the record's newer decision becomes the local flag, so
+        // getCcpaOptout() never keeps showing the value the edge rejected.
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          response(200, ''), // categories
+          response(
+            200,
+            JSON.stringify({
+              status: 'ok',
+              stale: true,
+              stale_categories: [],
+              stale_fields: ['ccpa_optout'],
+            }),
+          ),
+          found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }), // read back
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+        expect(fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1]).toMatchObject({
+          method: 'GET',
+        });
+        expect(getCcpaOptout()).toBe(false);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a stale CCPA write whose read-back fails stays pending, for the next re-sync to settle', async () => {
         await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          response(200, ''), // categories
+          response(
+            200,
+            JSON.stringify({
+              status: 'ok',
+              stale: true,
+              stale_categories: [],
+              stale_fields: ['ccpa_optout'],
+            }),
+          ),
+          response(503, ''), // read back fails
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+        expect(getCcpaOptout()).toBe(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
+      });
+
+      it('a stale CCPA write keeps a newer setCcpaOptout made during the read-back', async () => {
+        const fetchMock = await initThenStub(
           configWithGate(true),
           response(200, ''), // save_preferences
           response(200, ''), // categories
@@ -2165,12 +2264,17 @@ describe('ConsentManager — Universal Consent', () => {
         );
         await savePreferences(explicitChoice(true));
         bindDeviceTo(USER_HASH);
+        let newer: Promise<boolean> | undefined;
+        fetchMock.mockImplementationOnce(async () => {
+          newer = setCcpaOptout(false);
+          return found({ ccpa_optout: true, updated_at: '2099-01-01T00:00:00Z' });
+        });
 
-        await expect(
-          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
-        ).resolves.toBe(false);
-        // Settled: the next re-sync adopts the record's newer decision rather than keeping this one.
-        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        await newer;
+
+        expect(getCcpaOptout()).toBe(false);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
       });
 
       it('a re-sync flush the record outranks adopts the record flag', async () => {
