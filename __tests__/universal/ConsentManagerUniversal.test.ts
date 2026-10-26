@@ -956,7 +956,8 @@ describe('ConsentManager — Universal Consent', () => {
       });
 
       const body = JSON.parse((fetchMock.mock.calls[3][1] as { body: string }).body);
-      expect(body.ccpa_optout).toBe(false);
+      // The fixture's sync_optout gate is off, so the field is left out (TRUST-3381), not false.
+      expect(body).not.toHaveProperty('ccpa_optout');
     });
 
     it('reads the device signal itself when the caller does not pass one', async () => {
@@ -2472,7 +2473,7 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     describe('wire field', () => {
-      it('is false when the gate is off even if the local flag is true', async () => {
+      it('is left out of the write when the gate is off, even if the local flag is true (TRUST-3381)', async () => {
         const fetchMock = await initThenStub(configWithGate(false), response(200, ''), notFound());
         await savePreferences(explicitChoice(true));
         await setCcpaOptout(true);
@@ -2481,7 +2482,8 @@ describe('ConsentManager — Universal Consent', () => {
 
         const posts = ucPosts(fetchMock);
         expect(posts).toHaveLength(1);
-        expect(postBody(posts[0]).ccpa_optout).toBe(false);
+        // Not `false`: a gate-off device must not record "not opted out" over a real opt-out.
+        expect(postBody(posts[0])).not.toHaveProperty('ccpa_optout');
       });
 
       it('is never derived from marketing rejection or a denied tracking signal', async () => {
@@ -3046,15 +3048,46 @@ describe('ConsentManager — Universal Consent', () => {
         expect(getCcpaOptout()).toBe(false);
       });
 
-      it('is never pending on an unbound device or with the gate off', async () => {
+      it('is never pending on an unbound device', async () => {
         await initThenStub(configWithGate(true));
         await setCcpaOptout(true);
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
 
-        reset();
-        await initThenStub(configWithGate(false));
+      it('a gate-off choice stays pending and is flushed once the gate turns on (TRUST-3381)', async () => {
+        let fetchMock = await initThenStub(
+          configWithGate(false),
+          response(200, ''),
+          found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }),
+        );
+        await savePreferences(explicitChoice(true));
         bindDeviceTo(USER_HASH);
         await setCcpaOptout(true);
+        const decidedAt = deviceStorage().loadCcpaOptoutPendingSince();
+        expect(decidedAt).not.toBeNull();
+
+        // A gate-off re-sync sends nothing for the flag and leaves it pending.
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(deviceStorage().loadCcpaOptoutPendingSince()).toBe(decidedAt);
+
+        // The customer turns the gate on; the next re-sync sends the choice, dated when it was made.
+        // Drop the cached gate-off config so the next initialize() reads the new one.
+        new (require('react-native-mmkv').MMKV)({ id: 'datagrail-consent' }).delete(
+          'datagrail_consent_config_cache',
+        );
+        fetchMock = await initThenStub(
+          configWithGate(true),
+          found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }),
+        );
+        await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        expect(postBody(posts[0]).consent_preferences).toEqual({ cookieOptions: {} });
+        expect(postBody(posts[0]).ccpa_optout).toBe(true);
+        expect(postBody(posts[0]).decision_ts).toBe(decidedAt);
+        expect(getCcpaOptout()).toBe(true);
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
       });
 

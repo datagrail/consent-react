@@ -193,8 +193,8 @@ export class UniversalConsentService {
    * `X-DG-Api-Key`, no signature/timestamp/nonce headers.
    *
    * @param ccpaOptout the user's RAW local CCPA "Do Not Sell or Share" flag (set by
-   *   `setCcpaOptout` or adopted from a record). Written as `true` only when the
-   *   `universalConsent.syncOptout` gate is also on. Never derived from marketing consent or the
+   *   `setCcpaOptout` or adopted from a record). Sent only when the `universalConsent.syncOptout`
+   *   gate is on; with it off the body has no `ccpa_optout` key. Never derived from marketing consent or the
    *   device's ad-tracking signal — that signal is narrower than a do-not-sell choice.
    * @param decisionTs when the user made the choice being written, in unix seconds (TRUST-3225). Sent
    *   as the body's `decision_ts` with `is_explicit: true`, and signed into provDigest. When unknown
@@ -203,7 +203,7 @@ export class UniversalConsentService {
    * @returns the record-level fields the edge kept a newer stored value for (`stale_fields` on a
    *   200), e.g. `['ccpa_optout']` when the record already holds a newer CCPA decision.
    *
-   * `ccpaOptout: null` (with the syncOptout gate on) omits the field, leaving the record's register
+   * `ccpaOptout: null`, or the syncOptout gate off, omits the field, leaving the record's register
    * untouched: the write carries no CCPA decision.
    */
   async save(
@@ -215,10 +215,12 @@ export class UniversalConsentService {
     getSignature?: SignatureProvider,
     decisionTs?: number | null,
   ): Promise<{ staleFields: string[] }> {
-    // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591): with it off every
-    // write says false. With it on, `null` omits the field (undefined drops out of the JSON).
+    // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591). With it off the field
+    // is left out entirely (TRUST-3381, as web and the native SDKs): a `false` would record "not
+    // opted out" and could override a real opt-out made on another device. With it on, `null` omits
+    // it too. `undefined` drops out of the JSON.
     const syncsCcpaOptout = config.universalConsent?.syncOptout === true;
-    const ccpaField = !syncsCcpaOptout ? false : ccpaOptout === null ? undefined : ccpaOptout;
+    const ccpaField = !syncsCcpaOptout || ccpaOptout === null ? undefined : ccpaOptout;
     return this.post(config, identifier, apiKey, getSignature, decisionTs, (userHash, ts) => ({
       customer_id: config.dgCustomerId,
       user_hash: userHash,

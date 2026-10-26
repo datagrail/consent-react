@@ -352,8 +352,9 @@ export function clearUserIdentifier(): void {
  * cases, and `getCcpaOptout()` tells them apart:
  * - The call saved the flag locally only (no `sync`, the gate is off, the device isn't bound to
  *   `sync.identifier`, the binding changed while hashing, or there is no explicit category choice
- *   to write with). `getCcpaOptout()` returns `optedOut`; on a bound device with the gate on, it is
- *   sent by the next write-through or `setUserIdentifier` re-sync.
+ *   to write with). `getCcpaOptout()` returns `optedOut`; on a bound device it is sent by the next
+ *   write-through or `setUserIdentifier` re-sync with the gate on, even if the gate was off when
+ *   the choice was made (TRUST-3381).
  * - The record already held a NEWER CCPA decision (made on another device after this one), so the
  *   edge kept it. That decision wins: the SDK reads it back and it becomes the local flag, so
  *   `getCcpaOptout()` returns the record's value, not `optedOut`.
@@ -377,7 +378,9 @@ export async function setCcpaOptout(
   // Pending until a write-through below succeeds, but only on a bound device: an unbound device's
   // next setUserIdentifier is a LOGIN, which replaces the flag with the record's regardless. While
   // pending, a RE-SYNC keeps this choice instead of adopting the record's stale value (TRUST-3308).
-  storageService!.saveCcpaOptout(optedOut, syncs && boundHash !== null ? decidedAt : null);
+  // Pending with the syncOptout gate off too (TRUST-3381, as web): nothing can carry it now, and the
+  // first RE-SYNC after the gate turns on sends it, dated when it was made.
+  storageService!.saveCcpaOptout(optedOut, boundHash !== null ? decidedAt : null);
   ccpaChoiceSeq += 1;
 
   if (sync === undefined || !syncs) {
@@ -470,7 +473,8 @@ async function sendCcpaOptout(send: {
     { ccpaOptout: send.ccpaOptout, decisionTs: send.decidedAt, getSignature: send.getSignature },
   );
   if (result === null) {
-    // The syncOptout gate is off: nothing reached the record, so the choice stays as it is.
+    // The syncOptout gate is off: nothing reached the record, so the choice stays pending until the
+    // gate turns on (TRUST-3381).
     return 'not-sent';
   }
   storageService!.markCcpaOptoutSynced(send.ccpaOptout, send.decidedAt);
@@ -796,7 +800,7 @@ async function rehydrateReturningRawPreferences(
   // The record's stored CCPA opt-out replaces the local flag along with the categories (an absent
   // field decodes to false). Not derived from anything: it is the user's recorded DNSMPI choice.
   // Outside a login, adopt it only with the syncOptout gate on: with the gate off the SDK never
-  // puts the choice on the record (it always says false), so adopting it would erase a local-only
+  // puts the choice on the record (writes leave the field out), so adopting it would erase a local-only
   // setCcpaOptout(true) on every re-sync. Same rule as the web/iOS/Android SDKs. Nor, on a re-sync,
   // while a setCcpaOptout choice is pending sync (TRUST-3308): it has not reached the record, so the
   // record still holds the value the user just changed, and adopting it would discard that choice.

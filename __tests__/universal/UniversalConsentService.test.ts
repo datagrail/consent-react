@@ -246,7 +246,7 @@ describe('UniversalConsentService', () => {
         user_hash: USER_HASH,
         consent_preferences: prefs,
         consent_mode: 'optout',
-        ccpa_optout: false,
+        // The fixture's sync_optout gate is off, so no ccpa_optout key (TRUST-3381).
         platform: 'react-native',
         policy_name: 'CPRA',
         config_version: 'cc959465-747d-4c81-8bc1-5dcd34dc3756',
@@ -445,7 +445,7 @@ describe('UniversalConsentService', () => {
       expect(init.headers).not.toHaveProperty('X-DG-Nonce');
     });
 
-    it('suppresses ccpa_optout when syncOptout is disabled', async () => {
+    it('omits ccpa_optout when syncOptout is disabled', async () => {
       // syncOptout is a feature gate, not the opt-out value. With the gate off, a true opt-out
       // must not be written.
       const fetchMock = mockFetch(200, '');
@@ -461,7 +461,8 @@ describe('UniversalConsentService', () => {
       );
 
       const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
-      expect(body.ccpa_optout).toBe(false);
+      // Left out entirely (TRUST-3381): a `false` could override a real opt-out recorded elsewhere.
+      expect(body).not.toHaveProperty('ccpa_optout');
     });
 
     it('writes ccpa_optout when syncOptout is enabled and the user opted out', async () => {
