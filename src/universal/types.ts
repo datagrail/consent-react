@@ -123,3 +123,18 @@ export function reconcileSignals(
   }
   return reconciled;
 }
+
+/**
+ * The boolean entries of a category map read from storage or the wire. A malformed value from
+ * another writer (e.g. `"false"`) is dropped rather than read as the user's choice: a string is
+ * truthy locally, and a write-through would send it back cross-device.
+ */
+export function booleanEntries(map: Record<string, unknown>): Record<string, boolean> {
+  const choice: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(map)) {
+    if (typeof value === 'boolean') {
+      choice[key] = value;
+    }
+  }
+  return choice;
+}

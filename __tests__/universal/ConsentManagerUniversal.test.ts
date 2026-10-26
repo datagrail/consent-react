@@ -2726,6 +2726,37 @@ describe('ConsentManager — Universal Consent', () => {
         expect(getCcpaOptout()).toBe(true);
       });
 
+      it('a logout while the login read is in flight: nothing applied, kept or bound', async () => {
+        const fetchMock = await initThenStub(configWithGate(true));
+        fetchMock.mockImplementationOnce(() => {
+          void setCcpaOptout(true);
+          clearUserIdentifier();
+          return Promise.resolve(found({ ccpa_optout: true }));
+        });
+
+        await setUserIdentifier(OPAQUE_ID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(false);
+        expect(hasUserConsent()).toBe(false);
+        expect(deviceStorage().loadBoundUserHash()).toBeNull();
+      });
+
+      it('a logout while the login write is in flight leaves the device unbound', async () => {
+        const fetchMock = await initThenStub(configWithGate(true));
+        await acceptAll();
+        fetchMock.mockResolvedValueOnce(notFound());
+        fetchMock.mockImplementationOnce(() => {
+          clearUserIdentifier();
+          return Promise.resolve(response(200, ''));
+        });
+
+        await setUserIdentifier(OPAQUE_ID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(1);
+        expect(deviceStorage().loadBoundUserHash()).toBeNull();
+      });
+
       it('miss while bound to another identity: neutral reset clears the flag', async () => {
         const fetchMock = await initThenStub(configWithGate(true), notFound());
         bindDeviceTo(OTHER_HASH);
@@ -2736,6 +2767,51 @@ describe('ConsentManager — Universal Consent', () => {
         expect(ucPosts(fetchMock)).toHaveLength(0);
         expect(getCcpaOptout()).toBe(false);
       });
+    });
+
+    it('rehydrateFromUniversalConsent keeps a setCcpaOptout made while its read was in flight', async () => {
+      const fetchMock = await initThenStub(configWithGate(true));
+      fetchMock.mockImplementationOnce(() => {
+        void setCcpaOptout(true);
+        return Promise.resolve(found({ ccpa_optout: false }));
+      });
+
+      await expect(rehydrateFromUniversalConsent(OPAQUE_ID, API_KEY)).resolves.toBe(true);
+
+      expect(getCcpaOptout()).toBe(true);
+    });
+
+    it('rehydrateFromUniversalConsent applies nothing after a logout during its read', async () => {
+      const fetchMock = await initThenStub(configWithGate(true));
+      fetchMock.mockImplementationOnce(() => {
+        clearUserIdentifier();
+        return Promise.resolve(found({ ccpa_optout: true }));
+      });
+
+      await expect(rehydrateFromUniversalConsent(OPAQUE_ID, API_KEY)).resolves.toBe(false);
+
+      expect(hasUserConsent()).toBe(false);
+      expect(getCcpaOptout()).toBe(false);
+    });
+
+    it('a record category with a non-boolean value is neither applied nor re-sent', async () => {
+      const fetchMock = await initThenStub(
+        configWithGate(true),
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': 'false' },
+          },
+        }),
+      );
+      await rehydrateFromUniversalConsent(OPAQUE_ID, API_KEY);
+      expect(deviceStorage().loadAdoptedRawChoice()).toEqual({ 'dg-category-essential': true });
+
+      bindDeviceTo(USER_HASH);
+      await setCcpaOptout(true, { identifier: OPAQUE_ID, apiKey: API_KEY, getSignature });
+
+      const sent = postBody(ucPosts(fetchMock)[0]).consent_preferences.cookieOptions;
+      expect(sent).not.toHaveProperty('dg-category-marketing');
     });
 
     it('rehydrateFromUniversalConsent adopts the record value', async () => {

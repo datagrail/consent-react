@@ -15,7 +15,7 @@ import { ConfigService } from './config/ConfigService';
 import { ConsentResolver } from './consent/ConsentResolver';
 import { ConsentEventEmitter } from './consent/EventEmitter';
 import { UniversalConsentService } from './universal/UniversalConsentService';
-import { reconcileSignals } from './universal/types';
+import { booleanEntries, reconcileSignals } from './universal/types';
 import { nowSeconds, recordDecisionTs } from './universal/decisionTs';
 import type {
   SignatureProvider,
@@ -36,10 +36,12 @@ let offlineQueue: OfflineQueue | null = null;
 let configService: ConfigService | null = null;
 let universalConsentService: UniversalConsentService | null = null;
 let eventEmitter: ConsentEventEmitter = new ConsentEventEmitter();
-// Counts setCcpaOptout calls, and remembers the last value one stored, so setUserIdentifier can tell
-// that the host set the flag while its read was in flight (the read may have overwritten it since).
+// Counts setCcpaOptout calls, so a Universal Consent read can tell that the host set the flag while
+// it was in flight (that choice is newer than the record and must not be overwritten by it).
 let ccpaChoiceSeq = 0;
-let lastCcpaChoice = false;
+// Counts logouts (clearUserIdentifier, reset), so a Universal Consent read or write that was in
+// flight across one applies nothing and binds nothing: its record belongs to the logged-out user.
+let identityEpoch = 0;
 
 /**
  * Initialize the DataGrail Consent SDK.
@@ -254,6 +256,7 @@ export function onConsentChanged(listener: ConsentChangeListener): Unsubscribe {
  * which is non-destructive.
  */
 export function reset(): void {
+  identityEpoch += 1;
   if (storageService) {
     // clearAll() also removes the Universal Consent identity binding (BOUND_USER_HASH lives in
     // the same MMKV instance).
@@ -310,6 +313,7 @@ function returnToNeutral(): void {
  * user is bound. Like `reset()` it does not throw before `initialize()`.
  */
 export function clearUserIdentifier(): void {
+  identityEpoch += 1;
   if (!storageService) {
     return;
   }
@@ -375,7 +379,6 @@ export async function setCcpaOptout(
   // pending, a RE-SYNC keeps this choice instead of adopting the record's stale value (TRUST-3308).
   storageService!.saveCcpaOptout(optedOut, syncs && boundHash !== null ? decidedAt : null);
   ccpaChoiceSeq += 1;
-  lastCcpaChoice = optedOut;
 
   if (sync === undefined || !syncs) {
     return false;
@@ -657,16 +660,12 @@ export async function rehydrateFromUniversalConsent(
 ): Promise<boolean> {
   assertUniversalConsentEnabled();
   const resolvedApiKey = resolveUniversalConsentApiKey(apiKey);
-  const { rawCookieOptions, adoptedPreferences } = await rehydrateReturningRawPreferences(
-    identifier,
-    resolvedApiKey,
-    trackingSignal,
-    false,
-  );
+  const { rawCookieOptions, adoptedPreferences, identityChanged } =
+    await rehydrateReturningRawPreferences(identifier, resolvedApiKey, trackingSignal, false);
   if (adoptedPreferences !== null) {
     eventEmitter.emit(adoptedPreferences);
   }
-  return rawCookieOptions !== null;
+  return !identityChanged && rawCookieOptions !== null;
 }
 
 /**
@@ -713,12 +712,32 @@ async function rehydrateReturningRawPreferences(
   recordDecisionTs: number | null;
   suppressNonEssential: boolean;
   adoptedPreferences: ConsentPreferences | null;
+  identityChanged: boolean;
+  ccpaSetDuringRead: boolean;
 }> {
   // Both callers have already checked that Universal Consent is enabled.
+  const epochAtStart = identityEpoch;
+  const ccpaSeqAtStart = ccpaChoiceSeq;
   // Goes to the service directly rather than through fetchUniversalConsent, which returns an
   // already-reconciled record. Both views are needed here: the reconciled one to persist locally,
   // the raw one to hand back for the write.
   const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
+  // A logout (or reset) while the read was in flight: the record is the logged-out user's, and the
+  // device is neutral now. Apply nothing.
+  if (identityEpoch !== epochAtStart) {
+    return {
+      recordFound: false,
+      rawCookieOptions: null,
+      recordCcpaOptout: null,
+      recordDecisionTs: null,
+      suppressNonEssential: false,
+      adoptedPreferences: null,
+      identityChanged: true,
+      ccpaSetDuringRead: false,
+    };
+  }
+  // A setCcpaOptout made while the read was in flight is newer than the record: keep it.
+  const ccpaSetDuringRead = ccpaChoiceSeq !== ccpaSeqAtStart;
   // A CCPA choice made from now on must order after every register this record holds (TRUST-3225),
   // whatever is adopted from it below.
   const readRecordTs = recordDecisionTs(record?.updatedAt);
@@ -739,9 +758,12 @@ async function rehydrateReturningRawPreferences(
       recordDecisionTs: readRecordTs,
       suppressNonEssential: false,
       adoptedPreferences: null,
+      identityChanged: false,
+      ccpaSetDuringRead,
     };
   }
-  const rawCookieOptions = record.consentPreferences.cookieOptions ?? {};
+  // Boolean entries only: a malformed value from another writer is neither applied nor re-sent.
+  const rawCookieOptions = booleanEntries(record.consentPreferences.cookieOptions ?? {});
 
   // Local state gets the RECONCILED view — either signal suppresses. The stored `gpc` came from
   // the web, the tracking signal from this device; neither can re-enable what the other suppressed.
@@ -778,11 +800,13 @@ async function rehydrateReturningRawPreferences(
   // setCcpaOptout(true) on every re-sync. Same rule as the web/iOS/Android SDKs. Nor, on a re-sync,
   // while a setCcpaOptout choice is pending sync (TRUST-3308): it has not reached the record, so the
   // record still holds the value the user just changed, and adopting it would discard that choice.
-  // A login adopt replaces the flag regardless (and so clears the pending marker).
+  // A login adopt replaces the flag regardless (and so clears the pending marker). Never over a
+  // setCcpaOptout made during the read, which is newer than the record.
   if (
-    fillFromNeutral ||
-    (currentConfig!.universalConsent?.syncOptout === true &&
-      !storageService!.hasPendingCcpaOptoutSync())
+    !ccpaSetDuringRead &&
+    (fillFromNeutral ||
+      (currentConfig!.universalConsent?.syncOptout === true &&
+        !storageService!.hasPendingCcpaOptoutSync()))
   ) {
     storageService!.saveCcpaOptout(record!.ccpaOptout);
   }
@@ -794,6 +818,8 @@ async function rehydrateReturningRawPreferences(
     recordDecisionTs: adoptedDecisionTs,
     suppressNonEssential,
     adoptedPreferences: preferences,
+    identityChanged: false,
+    ccpaSetDuringRead,
   };
 }
 
@@ -1023,7 +1049,8 @@ export async function setUserIdentifier(
   // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
   let localCcpaOptout = storageService!.loadCcpaOptout();
   let localCcpaPendingSince = storageService!.loadCcpaOptoutPendingSince();
-  const ccpaSeqAtEntry = ccpaChoiceSeq;
+  // Captured with the binding: a logout from here on means this call must not bind (see below).
+  const epochAtEntry = identityEpoch;
   // ...and when the local choice was made (TRUST-3225): adopting a found record overwrites it with
   // the record's time. Only meaningful for an explicit choice; `null` = unknown.
   const localDecisionTs = hasExplicitChoice ? storageService!.loadDecisionTs() : null;
@@ -1042,6 +1069,8 @@ export async function setUserIdentifier(
     recordDecisionTs: remoteDecisionTs,
     suppressNonEssential,
     adoptedPreferences,
+    identityChanged,
+    ccpaSetDuringRead,
   } = await rehydrateReturningRawPreferences(
     identifier,
     apiKey,
@@ -1050,15 +1079,19 @@ export async function setUserIdentifier(
     !isResync,
   );
 
+  // The host logged out while the read was in flight. The read applied nothing; this call writes
+  // nothing and does not bind, so the next visitor gets the neutral device logout left.
+  if (identityChanged) {
+    return;
+  }
   // A setCcpaOptout call made while the read was in flight is newer than both the value captured
-  // above and the record the read may have adopted over it: it is the user's flag from here on, on
-  // a login as on a re-sync. Its pending-sync marker is whatever the call (and the read, which
-  // keeps it on a re-sync and clears it on a login) left. The branches below put it back locally,
-  // and a write carries it.
-  const ccpaSetDuringRead = ccpaChoiceSeq !== ccpaSeqAtEntry;
+  // above and the record: the read kept it, and it is the user's flag from here on, on a login as
+  // on a re-sync. On a re-sync its pending-sync marker is whatever the call left; a login starts
+  // the new identity with none (the choice was made before this identity was bound). The branches
+  // below keep it locally, and a write carries it.
   if (ccpaSetDuringRead) {
-    localCcpaOptout = lastCcpaChoice;
-    localCcpaPendingSince = storageService!.loadCcpaOptoutPendingSince();
+    localCcpaOptout = storageService!.loadCcpaOptout();
+    localCcpaPendingSince = isResync ? storageService!.loadCcpaOptoutPendingSince() : null;
   }
   const localCcpaPendingSync = localCcpaPendingSince !== null;
 
@@ -1186,7 +1219,11 @@ export async function setUserIdentifier(
 
   // Bind exactly once, on every success path. A read failure (the rehydrate above) or a write
   // failure (the awaited save) propagates before this line, so a failed call never binds and a
-  // retry is still recognised as a login and re-evaluated from scratch.
+  // retry is still recognised as a login and re-evaluated from scratch. A logout while the write was
+  // in flight wins too: the device stays unbound.
+  if (identityEpoch !== epochAtEntry) {
+    return;
+  }
   storageService!.saveBoundUserHash(userHash);
 }
 

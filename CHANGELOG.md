@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A login that finds an essential-only record (a present map that names no optional category this config knows: empty, essentials only, or only unknown keys) keeps every optional category off, instead of filling them with their config defaults (TRUST-2961)
 - `setCcpaOptout` resolves `true` when it wrote the flag to the Universal Consent record and `false` when it saved it locally only. A write-through sends the flag stored at write time, so an older call can't overwrite a newer one (TRUST-2591)
 - The ATT bridge's save no longer discards an adopted record's raw choice, and does not change it: the tracking status's marketing decision applies to this device's view only, so a later write-through stores neither the record's GPC suppression nor this device's ATT status as the user's cross-device choice (TRUST-2591)
-- A `setCcpaOptout` call made while `setUserIdentifier`'s read is in flight is kept: the read's adopt no longer overwrites it, and a re-sync write carries it (TRUST-2591)
+- A `setCcpaOptout` call made while a Universal Consent read (`setUserIdentifier` or `rehydrateFromUniversalConsent`) is in flight is kept: the read's adopt no longer overwrites it, and a re-sync write carries it. A logout (`clearUserIdentifier()` or `reset()`) while a read is in flight applies nothing from it, and a `setUserIdentifier` crossed by a logout no longer binds. A record category whose value is not a boolean is ignored rather than applied or re-sent (TRUST-2591)
 
 ### Fixed
 

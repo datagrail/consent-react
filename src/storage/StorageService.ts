@@ -4,6 +4,7 @@ import type { ConsentPreferences, ConsentConfig } from '../types';
 import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
 import { runMigrations } from './migrations';
 import { DECISION_TS_STORED_TOLERANCE_SECONDS, nowSeconds } from '../universal/decisionTs';
+import { booleanEntries } from '../universal/types';
 
 /**
  * Synchronous storage layer backed by MMKV.
@@ -95,9 +96,10 @@ export class StorageService {
     }
     try {
       const parsed: unknown = JSON.parse(raw);
-      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (parsed as Record<string, boolean>)
-        : null;
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return null;
+      }
+      return booleanEntries(parsed as Record<string, unknown>);
     } catch {
       return null;
     }
