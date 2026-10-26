@@ -123,6 +123,9 @@ export class UniversalConsentService {
     const params = new URLSearchParams({
       customer_id: config.dgCustomerId,
       user_hash: userHash,
+      // Same platform writes declare, so the edge classifies this read as the React Native
+      // surface instead of guessing ios/android from the User-Agent (TRUST-3251).
+      platform: PLATFORM,
     });
     const url = `${UniversalConsentService.baseUrl(config)}?${params.toString()}`;
 

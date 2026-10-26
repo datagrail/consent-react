@@ -85,6 +85,7 @@ describe('UniversalConsentService', () => {
       expect(url).not.toContain('/api/v1/');
       expect(url).toContain('customer_id=ac46d8ad-a67a-431f-a5d5-9e3eb922dae7');
       expect(url).toContain(`user_hash=${USER_HASH}`);
+      expect(new URL(url).searchParams.get('platform')).toBe('react-native');
     });
 
     it('sends the API key but no signature headers — reads are unsigned', async () => {
