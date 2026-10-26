@@ -349,9 +349,12 @@ export async function setCcpaOptout(
     getSignature?: SignatureProvider;
   },
 ): Promise<boolean> {
-  // When the host made the call, before any await, so a deferred or retried write carries it.
-  const decidedAt = nowSeconds();
   assertInitialized();
+  // When the host made the call, before any await, so a deferred or retried write carries it.
+  // Monotonic per device (TRUST-3225): strictly after the last CCPA choice stored here and after
+  // the updated_at of any record read here, so a clock running behind the record's (or a toggle
+  // back within the same second) cannot lose at the edge and then be reverted by a re-sync.
+  const decidedAt = storageService!.stampCcpaDecision();
   const syncs = isUniversalConsentEnabled() && currentConfig!.universalConsent?.syncOptout === true;
   const boundHash = storageService!.loadBoundUserHash();
   // Pending until a write-through below succeeds, but only on a bound device: an unbound device's
@@ -632,6 +635,12 @@ async function rehydrateReturningRawPreferences(
   // already-reconciled record. Both views are needed here: the reconciled one to persist locally,
   // the raw one to hand back for the write.
   const record = await universalConsentService!.get(currentConfig!, identifier, apiKey);
+  // A CCPA choice made from now on must order after every register this record holds (TRUST-3225),
+  // whatever is adopted from it below.
+  const readRecordTs = recordDecisionTs(record?.updatedAt);
+  if (readRecordTs !== null) {
+    storageService!.raiseCcpaDecisionFloor(readRecordTs);
+  }
 
   // ABSENT consent_preferences — a miss (no record), or a found signal-only record — carries no
   // answered choice, so there is nothing to apply. A PRESENT consent_preferences block IS an
@@ -643,7 +652,7 @@ async function rehydrateReturningRawPreferences(
       recordFound: record !== null,
       rawCookieOptions: null,
       recordCcpaOptout: record?.ccpaOptout ?? null,
-      recordDecisionTs: recordDecisionTs(record?.updatedAt),
+      recordDecisionTs: readRecordTs,
       suppressNonEssential: false,
     };
   }

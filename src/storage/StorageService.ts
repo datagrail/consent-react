@@ -194,6 +194,48 @@ export class StorageService {
     }
   }
 
+  /**
+   * Stamp a new CCPA choice made now and return its decision time (TRUST-3225). MONOTONIC per device:
+   * strictly after the last CCPA decision time this device stored or read off a record, so a clock
+   * running behind the record's, or two choices in the same second, still order correctly at the
+   * edge. Capped like saveDecisionTs so the stamp always reads back; a stored floor implausibly far
+   * ahead (a since-corrected clock) is ignored rather than followed into the future.
+   */
+  stampCcpaDecision(): number {
+    const now = nowSeconds();
+    const floor = this.loadCcpaDecisionTs();
+    const stamp =
+      floor !== null
+        ? Math.min(Math.max(now, floor + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
+        : now;
+    this.storage.set(STORAGE_KEYS.CCPA_DECISION_TS, stamp);
+    return stamp;
+  }
+
+  /**
+   * A Universal Consent record last decided at `recordTs` was read: raise the CCPA floor to it, so a
+   * choice made after reading it is stamped after every register it holds. Never lowers the floor.
+   */
+  raiseCcpaDecisionFloor(recordTs: number): void {
+    const floor = this.loadCcpaDecisionTs();
+    if (floor === null || recordTs > floor) {
+      this.storage.set(STORAGE_KEYS.CCPA_DECISION_TS, recordTs);
+    }
+  }
+
+  /**
+   * The CCPA decision floor, or `null` when none is stored, it is not a non-negative safe integer,
+   * or it is more than DECISION_TS_STORED_TOLERANCE_SECONDS ahead of this clock (same guard as
+   * loadDecisionTs).
+   */
+  loadCcpaDecisionTs(): number | null {
+    const value = this.storage.getNumber(STORAGE_KEYS.CCPA_DECISION_TS);
+    if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
+      return null;
+    }
+    return value <= nowSeconds() + DECISION_TS_STORED_TOLERANCE_SECONDS ? value : null;
+  }
+
   /** The stored CCPA opt-out choice; `false` ("not opted out") when none is stored. */
   loadCcpaOptout(): boolean {
     return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT) ?? false;

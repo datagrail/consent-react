@@ -1886,6 +1886,85 @@ describe('ConsentManager — Universal Consent', () => {
       expect(ccpa.ccpa_optout).toBe(true);
       expect(ccpa.decision_ts).toBe(T0 + 300);
     });
+
+    describe('the CCPA decision time is monotonic per device', () => {
+      const gatedConfig = () => {
+        const parsed = JSON.parse(universalConfigJson);
+        return JSON.stringify({
+          ...parsed,
+          universalConsent: { ...parsed.universalConsent, sync_optout: true },
+        });
+      };
+      const ccpaWrites = (mock: jest.Mock) =>
+        ucPosts(mock)
+          .map((call) => JSON.parse((call[1] as { body: string }).body))
+          .filter((body) => body.ccpa_optout !== undefined);
+
+      it('a clock running behind still dates a choice after the adopted record and the last choice', async () => {
+        // This device's clock is 200 s behind: the record it re-syncs was decided at T0+200 by its
+        // clock, T0+150 being the opt-out made on another device just before.
+        await boundDeviceWithChoiceAt(T0 - 100, true, gatedConfig());
+        setNow(T0);
+        stubUcFetch(found({ updated_at: iso(T0 + 200), ccpa_optout: true }));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(getCcpaOptout()).toBe(true);
+
+        // The user opts back in here. A bare "now" (T0) would lose to the record's T0+150..T0+200
+        // register at the edge and be reverted by the next re-sync.
+        const fetchMock = stubUcFetch();
+        await setCcpaOptout(false, { identifier: ID, apiKey: API_KEY, getSignature });
+        // ...and toggles back within the same second: still strictly later.
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        const writes = ccpaWrites(fetchMock);
+        expect(writes.map((body) => [body.ccpa_optout, body.decision_ts])).toEqual([
+          [false, T0 + 201],
+          [true, T0 + 202],
+        ]);
+        expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0 + 202);
+      });
+
+      it('a clock that ran ahead and was corrected stamps now, not a time beyond the stored one', async () => {
+        await boundDeviceWithChoiceAt(T0, true, gatedConfig());
+        // A choice made while this clock ran an hour ahead...
+        setNow(T0 + 3600);
+        stubUcFetch();
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0 + 3600);
+
+        // ...then the clock is corrected. That stored stamp is implausibly far ahead now, so it is
+        // ignored (the same guard as the category decision time) instead of pushing every later
+        // choice an hour into the future, where the edge would clamp it.
+        setNow(T0 + 10);
+        expect(deviceStorage().loadCcpaDecisionTs()).toBeNull();
+        const fetchMock = stubUcFetch();
+        await setCcpaOptout(false, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        expect(ccpaWrites(fetchMock).map((body) => body.decision_ts)).toEqual([T0 + 10]);
+      });
+
+      it('a clock running slightly ahead dates the choice by its own clock', async () => {
+        await boundDeviceWithChoiceAt(T0, true, gatedConfig());
+        setNow(T0 + 120);
+        const fetchMock = stubUcFetch();
+
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        expect(ccpaWrites(fetchMock).map((body) => body.decision_ts)).toEqual([T0 + 120]);
+      });
+
+      it('logout keeps the floor; reset() wipes it', async () => {
+        await boundDeviceWithChoiceAt(T0, true, gatedConfig());
+        stubUcFetch();
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        clearUserIdentifier();
+        expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0);
+
+        reset();
+        expect(deviceStorage().loadCcpaDecisionTs()).toBeNull();
+      });
+    });
   });
 
   describe('ccpa_optout (TRUST-2591)', () => {
