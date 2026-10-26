@@ -140,7 +140,33 @@ export function getConfig(): ConsentConfig | null {
 
 export async function savePreferences(prefs: ConsentPreferences): Promise<void> {
   assertInitialized();
+  // An explicit choice made here, so the stored preferences are no longer a Universal Consent adopt.
+  storageService!.clearAdoptedRawChoice();
+  await persistPreferences(prefs);
+}
 
+/**
+ * The ATT bridge's save: the marketing decision the tracking prompt implies, applied to the current
+ * preferences. Unlike savePreferences it is not a full choice. When the stored preferences are still
+ * an adopted record's signal-reconciled view, that view is not the user's raw choice (the record's
+ * GPC, or this device's signal, suppressed some categories), so the raw choice is kept with only the
+ * marketing decision merged in, and a later write-through still sends what the user chose.
+ * @internal Used by src/platform/att.*.ts.
+ */
+export async function saveTrackingAuthorizationPreferences(
+  prefs: ConsentPreferences,
+  marketingKey: string,
+  marketingEnabled: boolean,
+): Promise<void> {
+  assertInitialized();
+  const adoptedRaw = storageService!.loadAdoptedRawChoice();
+  if (adoptedRaw !== null) {
+    storageService!.saveAdoptedRawChoice({ ...adoptedRaw, [marketingKey]: marketingEnabled });
+  }
+  await persistPreferences(prefs);
+}
+
+async function persistPreferences(prefs: ConsentPreferences): Promise<void> {
   // Save to storage
   storageService!.savePreferences(prefs);
   storageService!.saveConfigVersion(currentConfig!.version);
@@ -148,8 +174,6 @@ export async function savePreferences(prefs: ConsentPreferences): Promise<void> 
   // A real choice, made now (TRUST-3225): the stale-re-sync guard compares this against a found
   // record's updated_at, and every Universal Consent write sends it as decision_ts.
   storageService!.saveDecisionTs();
-  // An explicit choice made here, so the stored preferences are no longer a Universal Consent adopt.
-  storageService!.clearAdoptedRawChoice();
 
   // Emit event
   eventEmitter.emit(prefs);
@@ -312,6 +336,10 @@ export function clearUserIdentifier(): void {
  * (config defaults are never written as one). Otherwise the change is local only and rides the
  * next Universal Consent write. A write failure rejects, like `setUserIdentifier`; the local flag
  * stays set.
+ *
+ * Resolves `true` when the flag was written to the Universal Consent record, `false` when the call
+ * saved it locally only (no `sync`, the gate is off, the device isn't bound to `sync.identifier`,
+ * the binding changed while hashing, or there is no explicit category choice to write with).
  */
 export async function setCcpaOptout(
   optedOut: boolean,
@@ -320,7 +348,7 @@ export async function setCcpaOptout(
     apiKey?: string;
     getSignature?: SignatureProvider;
   },
-): Promise<void> {
+): Promise<boolean> {
   assertInitialized();
   const syncs = isUniversalConsentEnabled() && currentConfig!.universalConsent?.syncOptout === true;
   const boundHash = storageService!.loadBoundUserHash();
@@ -330,21 +358,22 @@ export async function setCcpaOptout(
   storageService!.saveCcpaOptout(optedOut, syncs && boundHash !== null);
 
   if (sync === undefined || !syncs || boundHash === null) {
-    return;
+    return false;
   }
   const userHash = await universalConsentService!.userHash(currentConfig!, sync.identifier);
   // The hash is computed natively, so a logout (and a next visitor's choice) can land while it is in
   // flight. Re-check the binding after the await: local state read below must still belong to the
   // identity bound when this call started, or the next visitor's choice would be written to it.
   if (storageService!.loadBoundUserHash() !== boundHash) {
-    return;
+    return false;
   }
   const localChoice = storageService!.loadPreferences();
   if (userHash !== boundHash || !storageService!.hasUserConsented() || localChoice === null) {
-    return;
+    return false;
   }
 
   const apiKey = resolveUniversalConsentApiKey(sync.apiKey);
+  const sentCcpaOptout = storageService!.loadCcpaOptout();
 
   await universalConsentService!.save(
     currentConfig!,
@@ -353,14 +382,17 @@ export async function setCcpaOptout(
     // it would store a device-local suppression (ATT, GPC) as the user's denial on every device.
     { isCustomised: localChoice.isCustomised, cookieOptions: rawLocalChoice(localChoice) },
     apiKey,
-    optedOut,
+    // Re-read, not the `optedOut` argument: a later setCcpaOptout call can save (and write) a newer
+    // value while this one awaits the hash, and this write must not overwrite it with the older one.
+    sentCcpaOptout,
     sync.getSignature,
     // The write re-sends the stored CATEGORY choice, so it carries that choice's time, not now
     // (TRUST-3225): stamping it now would let a stale device's category copy out-rank a revocation
     // made since on another device. The write has one decision_ts, so the ccpa flag rides with it.
     storageService!.loadDecisionTs(),
   );
-  storageService!.markCcpaOptoutSynced(optedOut);
+  storageService!.markCcpaOptoutSynced(sentCcpaOptout);
+  return true;
 }
 
 /**
@@ -981,9 +1013,16 @@ function persistReconciledChoice(
   const reconciled = reconcileSignals(rawChoice, suppressNonEssential, essentialKeys);
   // A fresh map: when no signal applies `reconciled` IS `rawChoice`, which must not be mutated.
   const cookieOptions: Record<string, boolean> = {};
+  // A map that names no optional category this config knows is an essential-only choice
+  // (TRUST-2961): empty, essentials only (another SDK's reject-all), or only unknown keys. No
+  // optional category takes its config default then, or a login would enable categories a re-sync
+  // of the same record leaves off.
   if (fillFromNeutral) {
-    const essentialOnly = Object.keys(rawChoice).length === 0;
-    for (const option of ConsentResolver.getDefaults(currentConfig!).cookieOptions) {
+    const defaults = ConsentResolver.getDefaults(currentConfig!).cookieOptions;
+    const essentialOnly = !defaults.some(
+      (option) => !essentialKeys.has(option.gtmKey) && option.gtmKey in rawChoice,
+    );
+    for (const option of defaults) {
       cookieOptions[option.gtmKey] = essentialOnly ? false : option.isEnabled;
     }
   }
