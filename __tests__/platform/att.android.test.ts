@@ -7,7 +7,7 @@ const mockSavePreferences = jest.fn<Promise<void>, [ConsentPreferences]>();
 
 jest.mock('../../src/ConsentManager', () => ({
   getPreferences: () => mockGetPreferences(),
-  savePreferences: (prefs: ConsentPreferences) => mockSavePreferences(prefs),
+  saveTrackingAuthorizationPreferences: (prefs: ConsentPreferences) => mockSavePreferences(prefs),
 }));
 
 // Mock native module

@@ -3,6 +3,8 @@ import * as path from 'path';
 import { __resetAllStores } from 'react-native-mmkv';
 
 const USER_HASH = '1fee132c298d615098190e3e75f9c7e05db20d6cff6398f686fcebc67d1d87a4';
+// An opaque customer-side identifier, for tests that don't need USER_HASH's identity.
+const OPAQUE_ID = 'cust-7f3a9c2e41b8';
 const mockComputeUserHash = jest.fn<Promise<string>, [string, string, string]>();
 
 jest.mock('../../src/universal/userHash', () => ({
@@ -45,6 +47,7 @@ import {
   getCcpaOptout,
   acceptAll,
   decideIdentityBind,
+  saveTrackingAuthorizationPreferences,
 } from '../../src/ConsentManager';
 import { StorageService } from '../../src/storage/StorageService';
 import type { ConsentPreferences } from '../../src/types';
@@ -247,6 +250,22 @@ describe('ConsentManager — Universal Consent', () => {
 
       await setUserIdentifier('user@example.com', { getSignature });
       expect(apiKeyHeaderOf(mock.mock.calls[1])).toBe('config-key');
+    });
+
+    it('ignores a non-string config apiKey, failing with VALIDATION_ERROR rather than sending it', async () => {
+      const parsed = JSON.parse(universalConfigJson);
+      mockFetchSequence(
+        JSON.stringify({
+          ...parsed,
+          universalConsent: { ...parsed.universalConsent, apiKey: 12345 },
+        }),
+      );
+      await initUniversal();
+
+      expect(getConfig()?.universalConsent?.apiKey).toBeUndefined();
+      await expect(fetchUniversalConsent(OPAQUE_ID)).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
     });
 
     it('throws VALIDATION_ERROR when neither an explicit key nor a config key is present', async () => {
@@ -516,6 +535,27 @@ describe('ConsentManager — Universal Consent', () => {
       expect(isCategoryEnabled('dg-category-essential')).toBe(true);
       expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
     });
+
+    it.each([
+      ['essential keys only', { 'dg-category-essential': true }],
+      ['only keys this config does not know', { 'another-sdk-category': true }],
+    ])(
+      'a login treats a record naming no optional category (%s) as essential-only',
+      async (_name, map) => {
+        mockFetchSequence(
+          universalConfigJson,
+          found({ consent_preferences: { isCustomised: true, cookieOptions: map } }),
+        );
+        await initUniversal();
+
+        await setUserIdentifier(OPAQUE_ID, { apiKey: API_KEY, getSignature });
+
+        // Same outcome a re-sync of the record gives: no optional category takes its config default.
+        expect(isCategoryEnabled('dg-category-essential')).toBe(true);
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+        expect(isCategoryEnabled('dg-category-performance')).toBe(false);
+      },
+    );
 
     it('re-sync + present but empty found record: essential-only, essential stays on', async () => {
       mockFetchSequence(
@@ -1603,6 +1643,71 @@ describe('ConsentManager — Universal Consent', () => {
         // The current RAW local categories ride along unchanged.
         expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
         expect(getSignature).toHaveBeenCalledTimes(1);
+      });
+
+      it('resolves true when written and false when saved locally only', async () => {
+        await initThenStub(configWithGate(true));
+        await savePreferences(explicitChoice(true));
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false); // unbound
+        bindDeviceTo(USER_HASH);
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(true);
+        await expect(setCcpaOptout(false)).resolves.toBe(false); // no sync
+      });
+
+      it('writes the flag stored at write time, not the one captured before the hash', async () => {
+        const fetchMock = await initThenStub(configWithGate(true));
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+
+        const first = setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        // A later call saves a newer value while the first awaits its native hash.
+        deviceStorage().saveCcpaOptout(false);
+        await first;
+
+        expect(postBody(ucPosts(fetchMock)[0]).ccpa_optout).toBe(false);
+      });
+
+      it('the ATT save keeps an adopted raw choice, merging only the marketing decision', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          found({
+            gpc: true,
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: {
+                'dg-category-essential': true,
+                'dg-category-performance': true,
+                'dg-category-marketing': true,
+              },
+            },
+          }),
+        );
+        await rehydrateFromUniversalConsent(ID, API_KEY);
+        // GPC suppressed performance locally; that is the record's signal, not the user's choice.
+        expect(isCategoryEnabled('dg-category-performance')).toBe(false);
+
+        const view = getPreferences();
+        await saveTrackingAuthorizationPreferences(
+          {
+            isCustomised: true,
+            cookieOptions: view.cookieOptions.map((o) =>
+              o.gtmKey === 'dg-category-marketing' ? { ...o, isEnabled: false } : o,
+            ),
+          },
+          'dg-category-marketing',
+          false,
+        );
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+
+        const sent = postBody(ucPosts(fetchMock)[0]).consent_preferences.cookieOptions;
+        expect(sent['dg-category-performance']).toBe(true); // the raw choice, not the GPC view
+        expect(sent['dg-category-marketing']).toBe(false); // the ATT decision
       });
 
       it('propagates a write-through failure and keeps the local flag', async () => {

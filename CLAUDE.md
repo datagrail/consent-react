@@ -102,11 +102,12 @@ All public API matches native SDKs (see `src/index.ts` for the full export list)
 Universal Consent (cross-device), gated on `universalConsent.enabled` in the config:
 
 - `isUniversalConsentEnabled(): boolean`
-- `fetchUniversalConsent(identifier, apiKey, trackingSignal?): Promise<UniversalConsentRecord | null>` — inspect only; local state untouched
-- `rehydrateFromUniversalConsent(identifier, apiKey, trackingSignal?): Promise<boolean>` — fetch **and apply**; `false` on a miss
-- `setUserIdentifier(identifier, { apiKey, getSignature, trackingSignal? }): Promise<void>` — reads then (maybe) writes; binds the device to the user hash on success
+- `fetchUniversalConsent(identifier, apiKey?, trackingSignal?): Promise<UniversalConsentRecord | null>` — inspect only; local state untouched
+- `rehydrateFromUniversalConsent(identifier, apiKey?, trackingSignal?): Promise<boolean>` — fetch **and apply**; `false` on a miss
+- `setUserIdentifier(identifier, { apiKey?, getSignature, trackingSignal? }): Promise<void>` — reads then (maybe) writes; binds the device to the user hash on success
+- `apiKey` is optional everywhere: omitted, it falls back to `universalConsent.apiKey` from config.json (TRUST-2603)
 - `clearUserIdentifier(): void` — logout: clears the binding and returns local consent to neutral (non-destructive, no network; unlike `reset()`)
-- `setCcpaOptout(optedOut, sync?: { identifier, apiKey, getSignature? }): Promise<void>` — persist the explicit DNSMPI choice; writes through only when UC on + `syncOptout` + bound to `identifier` + explicit category choice (TRUST-2591)
+- `setCcpaOptout(optedOut, sync?: { identifier, apiKey?, getSignature? }): Promise<boolean>` — `true` only when written to the record; persist the explicit DNSMPI choice; writes through only when UC on + `syncOptout` + bound to `identifier` + explicit category choice (TRUST-2591)
 - `getCcpaOptout(): boolean` — the stored flag (RN has no other source)
 
 Also exported: `requestTrackingAuthorization`/`getTrackingStatus` (ATT, `src/platform/att*.ts`),
