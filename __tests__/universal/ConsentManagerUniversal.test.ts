@@ -2452,6 +2452,42 @@ describe('ConsentManager — Universal Consent', () => {
         expect(getCcpaOptout()).toBe(false);
       });
 
+      // Decision 2026-10-26 (TRUST-2591): a LOGIN adopts the record's ccpa_optout whatever the
+      // sync_optout gate says. The gate only governs re-sync adoption and the wire.
+      it('sync_optout off: a login still adopts the record opt-out', async () => {
+        const fetchMock = await initThenStub(configWithGate(false), found({ ccpa_optout: true }));
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('sync_optout off: a later local change still writes, and a re-sync does not undo it', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(false),
+          found({ ccpa_optout: true }),
+          found({ ccpa_optout: true }),
+        );
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(getCcpaOptout()).toBe(true);
+
+        // Local only with the gate off: stored, nothing sent.
+        await expect(
+          setCcpaOptout(false, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+        expect(getCcpaOptout()).toBe(false);
+
+        // The record still says true; a RE-SYNC with the gate off does not adopt it over the choice.
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        expect(getCcpaOptout()).toBe(false);
+        expect(
+          ucPosts(fetchMock).filter((call) => postBody(call).ccpa_optout === true),
+        ).toHaveLength(0);
+      });
+
       it('miss + explicit category choice + local true: POST carries ccpa_optout true', async () => {
         const fetchMock = await initThenStub(configWithGate(true), response(200, ''), notFound());
         await acceptAll();
