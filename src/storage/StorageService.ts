@@ -148,23 +148,48 @@ export class StorageService {
    * value is pending sync (TRUST-3308): only setCcpaOptout's not-yet-written choice on a bound device
    * is; anything else (adopting a record, the write-through restore of a synced value) is not.
    */
-  saveCcpaOptout(optedOut: boolean, pendingSync = false): void {
+  saveCcpaOptout(optedOut: boolean, pendingSince: number | null = null): void {
     this.storage.set(STORAGE_KEYS.CCPA_OPTOUT, optedOut);
-    if (pendingSync) {
-      this.storage.set(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC, true);
+    if (pendingSince !== null) {
+      // The value is when the pending choice was made (unix seconds): every deferred or retried
+      // write sends it as decision_ts, so a late write never outranks a newer choice elsewhere.
+      this.storage.set(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC, pendingSince);
     } else {
       this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
     }
   }
 
-  /** Whether the stored CCPA flag is a setCcpaOptout choice that has not reached the record yet. */
-  hasPendingCcpaOptoutSync(): boolean {
-    return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC) ?? false;
+  /**
+   * When the pending setCcpaOptout choice was made (unix seconds), or `null` when none is pending.
+   * A legacy boolean marker reads as pending at time 0: it holds the flag but never outranks a
+   * dated choice.
+   */
+  loadCcpaOptoutPendingSince(): number | null {
+    const since = this.storage.getNumber(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
+    if (since !== undefined) {
+      return since;
+    }
+    return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC) === true ? 0 : null;
   }
 
-  /** A write carrying `sent` succeeded: a pending choice reached the record, unless it changed since. */
-  markCcpaOptoutSynced(sent: boolean): void {
-    if (this.hasPendingCcpaOptoutSync() && this.loadCcpaOptout() === sent) {
+  /** Whether the stored CCPA flag is a setCcpaOptout choice that has not reached the record yet. */
+  hasPendingCcpaOptoutSync(): boolean {
+    return this.loadCcpaOptoutPendingSince() !== null;
+  }
+
+  /**
+   * A write carrying `sent` (the choice made at `since`) settled at the edge: it reached the record,
+   * or the record already held a newer CCPA decision. A choice made since is left pending.
+   */
+  markCcpaOptoutSynced(
+    sent: boolean,
+    since: number | null = this.loadCcpaOptoutPendingSince(),
+  ): void {
+    if (
+      this.hasPendingCcpaOptoutSync() &&
+      this.loadCcpaOptout() === sent &&
+      this.loadCcpaOptoutPendingSince() === since
+    ) {
       this.saveCcpaOptout(sent);
     }
   }

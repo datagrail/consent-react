@@ -1861,7 +1861,7 @@ describe('ConsentManager — Universal Consent', () => {
       expect(deviceStorage().loadDecisionTs()).toBeNull();
     });
 
-    it("setCcpaOptout re-sends the category choice with that choice's time, not now", async () => {
+    it("setCcpaOptout writes the categories at that choice's time, then the flag dated now", async () => {
       const parsed = JSON.parse(universalConfigJson);
       const gated = JSON.stringify({
         ...parsed,
@@ -1874,10 +1874,17 @@ describe('ConsentManager — Universal Consent', () => {
       await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
 
       const posts = ucPosts(fetchMock);
-      expect(posts).toHaveLength(1);
-      const body = JSON.parse((posts[0][1] as { body: string }).body);
-      expect(body.ccpa_optout).toBe(true);
-      expect(body.decision_ts).toBe(T0);
+      expect(posts).toHaveLength(2);
+      const categories = JSON.parse((posts[0][1] as { body: string }).body);
+      // The category choice keeps its own time, and carries no CCPA decision.
+      expect(categories.decision_ts).toBe(T0);
+      expect(categories.ccpa_optout).toBeUndefined();
+      const ccpa = JSON.parse((posts[1][1] as { body: string }).body);
+      // The CCPA-only write is dated when the choice was made (now), so a newer stored ccpa
+      // register can't reject it as stale, and no category is re-stamped.
+      expect(ccpa.consent_preferences).toEqual({ cookieOptions: {} });
+      expect(ccpa.ccpa_optout).toBe(true);
+      expect(ccpa.decision_ts).toBe(T0 + 300);
     });
   });
 
@@ -1959,12 +1966,16 @@ describe('ConsentManager — Universal Consent', () => {
         await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
 
         const posts = ucPosts(fetchMock);
-        expect(posts).toHaveLength(1);
-        const body = postBody(posts[0]);
-        expect(body.ccpa_optout).toBe(true);
-        // The current RAW local categories ride along unchanged.
-        expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
-        expect(getSignature).toHaveBeenCalledTimes(1);
+        expect(posts).toHaveLength(2);
+        // The current RAW local categories first, at their own time, with no CCPA decision...
+        const categories = postBody(posts[0]);
+        expect(categories.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
+        expect(categories.ccpa_optout).toBeUndefined();
+        // ...then the CCPA-only write.
+        const ccpa = postBody(posts[1]);
+        expect(ccpa.ccpa_optout).toBe(true);
+        expect(ccpa.consent_preferences).toEqual({ cookieOptions: {} });
+        expect(getSignature).toHaveBeenCalledTimes(2);
       });
 
       it('resolves true when written and false when saved locally only', async () => {
@@ -1991,7 +2002,58 @@ describe('ConsentManager — Universal Consent', () => {
         deviceStorage().saveCcpaOptout(false);
         await first;
 
+        expect(postBody(ucPosts(fetchMock)[1]).ccpa_optout).toBe(false);
+      });
+
+      it('reports a CCPA write the record already outranks as not written, and settles it', async () => {
+        await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          response(200, ''), // categories
+          response(
+            200,
+            JSON.stringify({
+              status: 'ok',
+              stale: true,
+              stale_categories: [],
+              stale_fields: ['ccpa_optout'],
+            }),
+          ),
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+        // Settled: the next re-sync adopts the record's newer decision rather than keeping this one.
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a re-sync flush the record outranks adopts the record flag', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          found({ ccpa_optout: true, updated_at: '2099-01-01T00:00:00Z' }),
+          response(
+            200,
+            JSON.stringify({
+              status: 'ok',
+              stale: true,
+              stale_categories: [],
+              stale_fields: ['ccpa_optout'],
+            }),
+          ),
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(false); // pending, no sync
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
         expect(postBody(ucPosts(fetchMock)[0]).ccpa_optout).toBe(false);
+        expect(getCcpaOptout()).toBe(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
       });
 
       it('the ATT save keeps an adopted raw choice, merging only the marketing decision', async () => {
@@ -2116,10 +2178,11 @@ describe('ConsentManager — Universal Consent', () => {
 
         // Changing only the Do Not Sell flag leaves the stored marketing choice enabled.
         const posts = ucPosts(fetchMock);
-        expect(posts).toHaveLength(1);
-        const body = postBody(posts[0]);
-        expect(body.ccpa_optout).toBe(true);
-        expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(true);
+        expect(posts).toHaveLength(2);
+        expect(postBody(posts[0]).consent_preferences.cookieOptions['dg-category-marketing']).toBe(
+          true,
+        );
+        expect(postBody(posts[1]).ccpa_optout).toBe(true);
         // Local reads keep the suppressed view.
         expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
       });
@@ -2133,7 +2196,7 @@ describe('ConsentManager — Universal Consent', () => {
         await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
 
         const posts = ucPosts(fetchMock);
-        expect(posts).toHaveLength(1);
+        expect(posts).toHaveLength(2);
         expect(postBody(posts[0]).consent_preferences.cookieOptions['dg-category-marketing']).toBe(
           false,
         );
@@ -2175,7 +2238,7 @@ describe('ConsentManager — Universal Consent', () => {
         expect(getCcpaOptout()).toBe(false);
       });
 
-      it('re-sync write-through carries the local flag, not the record value', async () => {
+      it('re-sync write-through leaves the record flag alone; a pending flag goes in its own write', async () => {
         const fetchMock = await initThenStub(
           configWithGate(true),
           response(200, ''),
@@ -2188,8 +2251,30 @@ describe('ConsentManager — Universal Consent', () => {
         await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
 
         const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(2);
+        // The category write-through carries no CCPA decision...
+        expect(postBody(posts[0]).ccpa_optout).toBeUndefined();
+        // ...and the pending choice is flushed CCPA-only.
+        expect(postBody(posts[1]).ccpa_optout).toBe(true);
+        expect(postBody(posts[1]).consent_preferences).toEqual({ cookieOptions: {} });
+        expect(getCcpaOptout()).toBe(true);
+      });
+
+      it('re-sync write-through with nothing pending keeps the record opt-out locally', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''),
+          found({ ccpa_optout: true }),
+        );
+        await savePreferences(explicitChoice(false));
+        bindDeviceTo(USER_HASH);
+        expect(getCcpaOptout()).toBe(false);
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
         expect(posts).toHaveLength(1);
-        expect(postBody(posts[0]).ccpa_optout).toBe(true);
+        expect(postBody(posts[0]).ccpa_optout).toBeUndefined();
         expect(getCcpaOptout()).toBe(true);
       });
 
@@ -2361,13 +2446,14 @@ describe('ConsentManager — Universal Consent', () => {
         await setCcpaOptout(true);
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
 
-        // The category choice is newer than the record, so the re-sync writes through, carrying the
-        // pending flag rather than adopting the record's stale false.
+        // The category choice is newer than the record, so the re-sync writes through, then flushes
+        // the pending flag in its own CCPA-only write rather than adopting the record's stale false.
         await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
 
         const posts = ucPosts(fetchMock);
-        expect(posts).toHaveLength(1);
-        expect(postBody(posts[0]).ccpa_optout).toBe(true);
+        expect(posts).toHaveLength(2);
+        expect(postBody(posts[0]).ccpa_optout).toBeUndefined();
+        expect(postBody(posts[1]).ccpa_optout).toBe(true);
         expect(getCcpaOptout()).toBe(true);
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
       });
@@ -2447,7 +2533,7 @@ describe('ConsentManager — Universal Consent', () => {
           return fetchMock;
         }
 
-        it('writes the record raw choice plus the local flag, stamped with the record time', async () => {
+        it('flushes the pending flag CCPA-only, dated when it was chosen, leaving categories alone', async () => {
           const fetchMock = await staleDeviceWithPendingOptout(
             found({
               ccpa_optout: false,
@@ -2459,20 +2545,18 @@ describe('ConsentManager — Universal Consent', () => {
             }),
           );
 
+          const deviceStoragePendingSince = deviceStorage().loadCcpaOptoutPendingSince();
+          expect(deviceStoragePendingSince).not.toBeNull();
           await setUserIdentifier(UID, { apiKey: API_KEY, getSignature });
 
           const posts = ucPosts(fetchMock);
           expect(posts).toHaveLength(1);
           const body = postBody(posts[0]);
-          // The categories another device chose stay as they are: the record's raw map, not this
-          // device's stale marketing:true.
-          expect(body.consent_preferences.cookieOptions).toEqual({
-            'dg-category-essential': true,
-            'dg-category-marketing': false,
-          });
+          // No category rides the flush: the categories another device chose stay as they are.
+          expect(body.consent_preferences).toEqual({ cookieOptions: {} });
           expect(body.ccpa_optout).toBe(true);
-          // The record's time, never "now" (TRUST-3311: one decision_ts per write).
-          expect(body.decision_ts).toBe(RECORD_TS);
+          // Dated when the pending choice was made, its own register's time (TRUST-3311).
+          expect(body.decision_ts).toBe(deviceStoragePendingSince);
           expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
           expect(getCcpaOptout()).toBe(true);
           expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
@@ -2517,7 +2601,7 @@ describe('ConsentManager — Universal Consent', () => {
 
         await setCcpaOptout(true, { identifier: UID, apiKey: API_KEY, getSignature });
 
-        expect(ucPosts(fetchMock)).toHaveLength(1);
+        expect(ucPosts(fetchMock)).toHaveLength(2);
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
         global.fetch = jest
           .fn()

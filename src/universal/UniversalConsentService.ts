@@ -197,16 +197,25 @@ export class UniversalConsentService {
    *   as the body's `decision_ts` with `is_explicit: true`, and signed into provDigest. When unknown
    *   (`null`/omitted: a choice stored before the SDK recorded decision times) the request timestamp
    *   stands in, which is exactly what the edge defaults a provenance-free write to.
+   * @param options.ccpaOnly a CCPA-only write: the body carries `ccpa_optout` and provenance only,
+   *   with an empty `cookieOptions` map and no `isCustomised` or record metadata, so the edge
+   *   advances the `ccpa_optout` register alone (same shape as consent-banner#756).
+   * @returns the record-level fields the edge kept a newer stored value for (`stale_fields` on a
+   *   200), e.g. `['ccpa_optout']` when the record already holds a newer CCPA decision.
+   *
+   * `ccpaOptout: null` (with the syncOptout gate on) omits the field, leaving the record's register
+   * untouched: the write carries no CCPA decision.
    */
   async save(
     config: ConsentConfig,
     identifier: string,
     preferences: UniversalConsentPreferences,
     apiKey: string,
-    ccpaOptout: boolean,
+    ccpaOptout: boolean | null,
     getSignature?: SignatureProvider,
     decisionTs?: number | null,
-  ): Promise<void> {
+    options: { ccpaOnly?: boolean } = {},
+  ): Promise<{ staleFields: string[] }> {
     const projectId = UniversalConsentService.requireProjectId(config);
     const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
 
@@ -255,22 +264,36 @@ export class UniversalConsentService {
       headers['X-DG-Key-Id'] = sig.keyId;
     }
 
-    const body = JSON.stringify({
-      customer_id: config.dgCustomerId,
-      user_hash: userHash,
-      consent_preferences: {
-        isCustomised: preferences.isCustomised,
-        cookieOptions: preferences.cookieOptions,
-      },
-      consent_mode: config.consentMode,
-      // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591).
-      ccpa_optout: config.universalConsent?.syncOptout === true && ccpaOptout,
-      platform: PLATFORM,
-      policy_name: config.consentPolicy.name,
-      config_version: config.version,
-      is_explicit: true,
-      decision_ts: effectiveDecisionTs,
-    });
+    // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591): with it off every
+    // write says false. With it on, `null` omits the field (undefined drops out of the JSON).
+    const syncsCcpaOptout = config.universalConsent?.syncOptout === true;
+    const ccpaField = !syncsCcpaOptout ? false : ccpaOptout === null ? undefined : ccpaOptout;
+    const body = JSON.stringify(
+      options.ccpaOnly
+        ? {
+            customer_id: config.dgCustomerId,
+            user_hash: userHash,
+            consent_preferences: { cookieOptions: {} },
+            ccpa_optout: ccpaField,
+            is_explicit: true,
+            decision_ts: effectiveDecisionTs,
+          }
+        : {
+            customer_id: config.dgCustomerId,
+            user_hash: userHash,
+            consent_preferences: {
+              isCustomised: preferences.isCustomised,
+              cookieOptions: preferences.cookieOptions,
+            },
+            consent_mode: config.consentMode,
+            ccpa_optout: ccpaField,
+            platform: PLATFORM,
+            policy_name: config.consentPolicy.name,
+            config_version: config.version,
+            is_explicit: true,
+            decision_ts: effectiveDecisionTs,
+          },
+    );
 
     const response = await this.network.request({
       url: UniversalConsentService.baseUrl(config),
@@ -285,5 +308,17 @@ export class UniversalConsentService {
         `Universal consent write failed with status ${response.status}`,
       );
     }
+    return { staleFields: parseStaleFields(response.data) };
+  }
+}
+
+/** `stale_fields` from a 200 write response body, or [] when absent or unparseable. */
+function parseStaleFields(data: string): string[] {
+  try {
+    const parsed = JSON.parse(data) as { stale_fields?: unknown } | null;
+    const fields = parsed?.stale_fields;
+    return Array.isArray(fields) ? fields.filter((f): f is string => typeof f === 'string') : [];
+  } catch {
+    return [];
   }
 }
