@@ -36,6 +36,15 @@ describe('StorageService', () => {
       expect(storage.loadAdoptedRawChoice()).toBeNull();
     });
 
+    it('drops non-boolean entries from a stored adopted raw choice', () => {
+      const raw = new (require('react-native-mmkv').MMKV)({ id: 'test-storage' });
+      raw.set(
+        'datagrail_consent_adopted_raw_choice',
+        JSON.stringify({ 'dg-category-marketing': 'false', 'dg-category-essential': true }),
+      );
+      expect(storage.loadAdoptedRawChoice()).toEqual({ 'dg-category-essential': true });
+    });
+
     it('should return null when no preferences saved', () => {
       expect(storage.loadPreferences()).toBeNull();
     });
