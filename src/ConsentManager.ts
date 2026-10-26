@@ -174,8 +174,13 @@ async function persistPreferences(
   storageService!.saveConfigVersion(currentConfig!.version);
   storageService!.setUserConsented(true);
   // A real choice, made now (TRUST-3225): the stale-re-sync guard compares this against a found
-  // record's updated_at, and every Universal Consent write sends it as decision_ts.
-  storageService!.saveDecisionTs();
+  // record's updated_at, and every Universal Consent write sends it as decision_ts. Not when the
+  // preferences are still an adopt's view (the ATT save): the raw choice a write would send is the
+  // record's, unchanged, so it keeps the record's time. Stamping now would let a later re-sync
+  // write that older copy over a revocation made elsewhere after the adopt.
+  if (adoptedRaw === null) {
+    storageService!.saveDecisionTs();
+  }
 
   // Emit event
   eventEmitter.emit(prefs);

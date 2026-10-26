@@ -1849,6 +1849,62 @@ describe('ConsentManager — Universal Consent', () => {
       expect(JSON.parse((posts[0][1] as { body: string }).body).decision_ts).toBe(T0);
     });
 
+    it('a re-sync after a login adopt, with no change here, adopts the newer record and writes nothing', async () => {
+      const parsed = JSON.parse(universalConfigJson);
+      const gated = JSON.stringify({
+        ...parsed,
+        universalConsent: { ...parsed.universalConsent, sync_optout: true },
+      });
+      mockFetchSequence(gated, response(200, ''));
+      await initUniversal();
+      stubUcFetch(recordAt(T0 - 60, true));
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+      expect(getCcpaOptout()).toBe(false);
+
+      // The user then opts out of sale and revokes marketing on the web; this device re-syncs.
+      setNow(T0 + 60);
+      const fetchMock = stubUcFetch(
+        found({
+          consent_preferences: {
+            isCustomised: true,
+            cookieOptions: { 'dg-category-essential': true, 'dg-category-marketing': false },
+          },
+          ccpa_optout: true,
+          updated_at: iso(T0 + 30),
+        }),
+      );
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      // The adopted copy is not newer than the record, so nothing stale is re-sent.
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      expect(getCcpaOptout()).toBe(true);
+    });
+
+    it('an ATT save over an adopt keeps the record time, so a later revocation elsewhere still wins', async () => {
+      mockFetchSequence(universalConfigJson, response(200, ''));
+      await initUniversal();
+      stubUcFetch(recordAt(T0 - 60, true));
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      // Marketing revoked on the web at T0-30; this device's ATT prompt is answered at T0.
+      const view = getPreferences();
+      await saveTrackingAuthorizationPreferences({
+        isCustomised: true,
+        cookieOptions: view!.cookieOptions.map((o) =>
+          o.gtmKey === 'dg-category-marketing' ? { ...o, isEnabled: false } : o,
+        ),
+      });
+      expect(deviceStorage().loadDecisionTs()).toBe(T0 - 60);
+
+      setNow(T0 + 60);
+      const fetchMock = stubUcFetch(recordAt(T0 - 30, false));
+      await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+      expect(ucPosts(fetchMock)).toHaveLength(0);
+      expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+    });
+
     it('a choice is stamped monotonically, and logout clears the stamp with the choice', async () => {
       await boundDeviceWithChoiceAt(T0, true);
       expect(deviceStorage().loadDecisionTs()).toBe(T0);
