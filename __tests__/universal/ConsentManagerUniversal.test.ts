@@ -244,6 +244,14 @@ describe('ConsentManager — Universal Consent', () => {
       expect(apiKeyHeaderOf(mock.mock.calls[1])).toBe('explicit-key');
     });
 
+    it('treats an empty explicit key as absent and uses the config key', async () => {
+      const mock = mockFetchSequence(configWithApiKey('config-key'), notFound());
+      await initUniversal();
+
+      await expect(fetchUniversalConsent(OPAQUE_ID, '')).resolves.toBeNull();
+      expect(apiKeyHeaderOf(mock.mock.calls[1])).toBe('config-key');
+    });
+
     it('setUserIdentifier uses the config key when the host omits it', async () => {
       const mock = mockFetchSequence(configWithApiKey('config-key'), notFound());
       await initUniversal();
@@ -1672,7 +1680,7 @@ describe('ConsentManager — Universal Consent', () => {
         expect(postBody(ucPosts(fetchMock)[0]).ccpa_optout).toBe(false);
       });
 
-      it('the ATT save keeps an adopted raw choice, merging only the marketing decision', async () => {
+      it('the ATT save keeps an adopted raw choice unchanged: the tracking status stays device-local', async () => {
         const fetchMock = await initThenStub(
           configWithGate(true),
           found({
@@ -1692,22 +1700,33 @@ describe('ConsentManager — Universal Consent', () => {
         expect(isCategoryEnabled('dg-category-performance')).toBe(false);
 
         const view = getPreferences();
-        await saveTrackingAuthorizationPreferences(
-          {
-            isCustomised: true,
-            cookieOptions: view.cookieOptions.map((o) =>
-              o.gtmKey === 'dg-category-marketing' ? { ...o, isEnabled: false } : o,
-            ),
-          },
-          'dg-category-marketing',
-          false,
-        );
+        await saveTrackingAuthorizationPreferences({
+          isCustomised: true,
+          cookieOptions: view.cookieOptions.map((o) =>
+            o.gtmKey === 'dg-category-marketing' ? { ...o, isEnabled: false } : o,
+          ),
+        });
+        // The ATT denial applies to this device's view only.
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
         bindDeviceTo(USER_HASH);
         await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
 
         const sent = postBody(ucPosts(fetchMock)[0]).consent_preferences.cookieOptions;
         expect(sent['dg-category-performance']).toBe(true); // the raw choice, not the GPC view
-        expect(sent['dg-category-marketing']).toBe(false); // the ATT decision
+        // The record's own marketing value, not a cross-device denial from this device's ATT status.
+        expect(sent['dg-category-marketing']).toBe(true);
+      });
+
+      it('rejects with VALIDATION_ERROR when no API key is configured, even on an unbound device', async () => {
+        // The fixture config carries no universalConsent.apiKey, and none is passed.
+        const fetchMock = await initThenStub(configWithGate(true));
+
+        await expect(setCcpaOptout(true, { identifier: OPAQUE_ID })).rejects.toMatchObject({
+          code: 'VALIDATION_ERROR',
+        });
+        // The local choice is still stored; nothing is sent.
+        expect(getCcpaOptout()).toBe(true);
+        expect(ucPosts(fetchMock)).toHaveLength(0);
       });
 
       it('propagates a write-through failure and keeps the local flag', async () => {
@@ -1914,6 +1933,23 @@ describe('ConsentManager — Universal Consent', () => {
       );
     });
 
+    it('a re-sync write carries a setCcpaOptout made while its read was in flight', async () => {
+      const fetchMock = await initThenStub(configWithGate(true));
+      await savePreferences(explicitChoice(false));
+      bindDeviceTo(USER_HASH);
+      fetchMock.mockImplementationOnce(() => {
+        void setCcpaOptout(true);
+        return Promise.resolve(found({ ccpa_optout: false }));
+      });
+
+      await setUserIdentifier(OPAQUE_ID, { apiKey: API_KEY, getSignature });
+
+      const posts = ucPosts(fetchMock);
+      expect(posts).toHaveLength(1);
+      expect(postBody(posts[0]).ccpa_optout).toBe(true);
+      expect(getCcpaOptout()).toBe(true);
+    });
+
     describe('login (TRUST-2902 rule)', () => {
       it('found record: local flag := record value, no POST, pre-login true dropped', async () => {
         const fetchMock = await initThenStub(
@@ -1973,6 +2009,20 @@ describe('ConsentManager — Universal Consent', () => {
         expect(ucPosts(fetchMock)).toHaveLength(0);
         expect(getCcpaOptout()).toBe(true);
         expect(hasUserConsent()).toBe(false);
+      });
+
+      it('a setCcpaOptout made while the login read is in flight is kept over the record', async () => {
+        const fetchMock = await initThenStub(configWithGate(true));
+        fetchMock.mockImplementationOnce(() => {
+          // The host stores the user's choice while the GET is outstanding.
+          void setCcpaOptout(true);
+          return Promise.resolve(found({ ccpa_optout: false }));
+        });
+
+        await setUserIdentifier(OPAQUE_ID, { apiKey: API_KEY, getSignature });
+
+        expect(ucPosts(fetchMock)).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(true);
       });
 
       it('miss while bound to another identity: neutral reset clears the flag', async () => {

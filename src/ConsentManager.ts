@@ -35,6 +35,10 @@ let offlineQueue: OfflineQueue | null = null;
 let configService: ConfigService | null = null;
 let universalConsentService: UniversalConsentService | null = null;
 let eventEmitter: ConsentEventEmitter = new ConsentEventEmitter();
+// Counts setCcpaOptout calls, and remembers the last value one stored, so setUserIdentifier can tell
+// that the host set the flag while its read was in flight (the read may have overwritten it since).
+let ccpaChoiceSeq = 0;
+let lastCcpaChoice = false;
 
 /**
  * Initialize the DataGrail Consent SDK.
@@ -139,35 +143,33 @@ export function getConfig(): ConsentConfig | null {
 
 export async function savePreferences(prefs: ConsentPreferences): Promise<void> {
   assertInitialized();
-  // An explicit choice made here, so the stored preferences are no longer a Universal Consent adopt.
-  storageService!.clearAdoptedRawChoice();
+  // An explicit choice made here, so the stored preferences are no longer a Universal Consent adopt
+  // (persistPreferences stores no adopted raw choice with them).
   await persistPreferences(prefs);
 }
 
 /**
- * The ATT bridge's save: the marketing decision the tracking prompt implies, applied to the current
- * preferences. Unlike savePreferences it is not a full choice. When the stored preferences are still
- * an adopted record's signal-reconciled view, that view is not the user's raw choice (the record's
- * GPC, or this device's signal, suppressed some categories), so the raw choice is kept with only the
- * marketing decision merged in, and a later write-through still sends what the user chose.
+ * The ATT bridge's save: the tracking status's marketing decision (`mapATTStatusToConsent`) applied
+ * to the current preferences, as the LOCAL view only. The tracking status is a device-local signal
+ * (on Android it is a device setting, with no prompt), and a device signal must never change what is
+ * stored cross-device (see `setUserIdentifier`). So when the stored preferences are still an adopted
+ * record's view, the adopted raw choice is kept exactly as it is: a later write-through sends the
+ * record's own marketing value, not the one this device's tracking status implies.
  * @internal Used by src/platform/att.*.ts.
  */
 export async function saveTrackingAuthorizationPreferences(
   prefs: ConsentPreferences,
-  marketingKey: string,
-  marketingEnabled: boolean,
 ): Promise<void> {
   assertInitialized();
-  const adoptedRaw = storageService!.loadAdoptedRawChoice();
-  if (adoptedRaw !== null) {
-    storageService!.saveAdoptedRawChoice({ ...adoptedRaw, [marketingKey]: marketingEnabled });
-  }
-  await persistPreferences(prefs);
+  await persistPreferences(prefs, storageService!.loadAdoptedRawChoice());
 }
 
-async function persistPreferences(prefs: ConsentPreferences): Promise<void> {
-  // Save to storage
-  storageService!.savePreferences(prefs);
+async function persistPreferences(
+  prefs: ConsentPreferences,
+  adoptedRaw: Record<string, boolean> | null = null,
+): Promise<void> {
+  // Save to storage, with the adopted raw choice these preferences are a view of (if any)
+  storageService!.savePreferences(prefs, adoptedRaw);
   storageService!.saveConfigVersion(currentConfig!.version);
   storageService!.setUserConsented(true);
 
@@ -347,6 +349,8 @@ export async function setCcpaOptout(
 ): Promise<boolean> {
   assertInitialized();
   storageService!.saveCcpaOptout(optedOut);
+  ccpaChoiceSeq += 1;
+  lastCcpaChoice = optedOut;
 
   if (
     sync === undefined ||
@@ -355,6 +359,9 @@ export async function setCcpaOptout(
   ) {
     return false;
   }
+  // Resolved before the binding and choice checks, as every other Universal Consent call does, so a
+  // missing key fails the same way whether or not this call would have written.
+  const apiKey = resolveUniversalConsentApiKey(sync.apiKey);
 
   const boundHash = storageService!.loadBoundUserHash();
   if (boundHash === null) {
@@ -371,8 +378,6 @@ export async function setCcpaOptout(
   if (userHash !== boundHash || !storageService!.hasUserConsented() || localChoice === null) {
     return false;
   }
-
-  const apiKey = resolveUniversalConsentApiKey(sync.apiKey);
 
   await universalConsentService!.save(
     currentConfig!,
@@ -418,11 +423,12 @@ function assertUniversalConsentEnabled(): void {
  * Resolve the edge API key for a Universal Consent call (TRUST-2603). An explicit value passed by
  * the host wins (existing integrations behave exactly as before); otherwise fall back to
  * `universalConsent.apiKey` from config.json, which lets the key rotate server-side with no client
- * release. Throws a VALIDATION_ERROR when neither is present. Call only after the enabled check, so
+ * release. An empty explicit key (`process.env.UC_KEY ?? ''`) counts as absent, so config.json's
+ * applies. Throws a VALIDATION_ERROR when neither is present. Call only after the enabled check, so
  * `currentConfig` is loaded.
  */
 function resolveUniversalConsentApiKey(explicit?: string): string {
-  const apiKey = explicit ?? currentConfig?.universalConsent?.apiKey;
+  const apiKey = explicit || currentConfig?.universalConsent?.apiKey;
   if (!apiKey) {
     throw new ConsentError(
       'VALIDATION_ERROR',
@@ -544,8 +550,7 @@ async function rehydrateReturningRawPreferences(
   rawCookieOptions: Record<string, boolean> | null;
   recordCcpaOptout: boolean | null;
 }> {
-  assertUniversalConsentEnabled();
-
+  // Both callers have already checked that Universal Consent is enabled.
   // Goes to the service directly rather than through fetchUniversalConsent, which returns an
   // already-reconciled record. Both views are needed here: the reconciled one to persist locally,
   // the raw one to hand back for the write.
@@ -608,10 +613,9 @@ async function rehydrateReturningRawPreferences(
     })),
   };
 
-  storageService!.savePreferences(preferences);
-  // The stored preferences are the reconciled view; remember the raw choice they came from, so a
-  // later write-through that re-sends this adopt sends what the user chose, not the suppression.
-  storageService!.saveAdoptedRawChoice(rawCookieOptions);
+  // The stored preferences are the reconciled view; store the raw choice they came from with them, so
+  // a later write-through that re-sends this adopt sends what the user chose, not the suppression.
+  storageService!.savePreferences(preferences, rawCookieOptions);
   // Stamp the CURRENT config version, not the record's. needsConsent() compares the stored
   // version against the running config, so carrying a stale version over from the writing
   // device would re-prompt immediately and undo the rehydration we just did.
@@ -828,7 +832,8 @@ export async function setUserIdentifier(
   // raw map it came from is what a write must carry. Captured here because the read replaces it.
   const localRawChoice = hasExplicitChoice ? rawLocalChoice(localChoice!) : null;
   // The raw local CCPA opt-out, captured for the same reason: rehydrating a found record replaces it.
-  const localCcpaOptout = storageService!.loadCcpaOptout();
+  let localCcpaOptout = storageService!.loadCcpaOptout();
+  const ccpaSeqAtEntry = ccpaChoiceSeq;
 
   // Read first. A genuine MISS comes back as `null`. A read FAILURE throws, and MUST propagate:
   // a rich remote record may exist that we simply could not read, and the server never merges — a
@@ -848,6 +853,14 @@ export async function setUserIdentifier(
     // A login REPLACES local state with the record; a re-sync keeps today's adopt behavior.
     !isResync,
   );
+
+  // A setCcpaOptout call made while the read was in flight is newer than both the value captured
+  // above and the record the read may have adopted over it: it is the user's flag from here on, on
+  // a login as on a re-sync. Both branches below put it back locally, and a write carries it.
+  const ccpaSetDuringRead = ccpaChoiceSeq !== ccpaSeqAtEntry;
+  if (ccpaSetDuringRead) {
+    localCcpaOptout = lastCcpaChoice;
+  }
 
   // The read is done and any found record is already applied to local state. The rest is a pure
   // decision over the read result and the captured local state (see `decideIdentityBind`): a
@@ -897,7 +910,9 @@ export async function setUserIdentifier(
     if (decision.returnToNeutral) {
       returnToNeutral();
     }
-    if (decision.adoptCcpaFromRecord !== null) {
+    if (ccpaSetDuringRead) {
+      storageService!.saveCcpaOptout(localCcpaOptout);
+    } else if (decision.adoptCcpaFromRecord !== null) {
       storageService!.saveCcpaOptout(decision.adoptCcpaFromRecord);
     }
   }
