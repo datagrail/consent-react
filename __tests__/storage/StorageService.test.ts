@@ -26,6 +26,25 @@ describe('StorageService', () => {
       expect(loaded).toEqual(preferences);
     });
 
+    it('stores an adopted raw choice with the preferences, and a plain save drops it', () => {
+      storage.savePreferences(preferences, { 'dg-category-marketing': true });
+      expect(storage.loadAdoptedRawChoice()).toEqual({ 'dg-category-marketing': true });
+
+      // Any other writer of the preferences (initialize()'s defaults, the neutral reset, an
+      // explicit save) cannot leave an old record's raw map behind.
+      storage.savePreferences(preferences);
+      expect(storage.loadAdoptedRawChoice()).toBeNull();
+    });
+
+    it('drops non-boolean entries from a stored adopted raw choice', () => {
+      const raw = new (require('react-native-mmkv').MMKV)({ id: 'test-storage' });
+      raw.set(
+        'datagrail_consent_adopted_raw_choice',
+        JSON.stringify({ 'dg-category-marketing': 'false', 'dg-category-essential': true }),
+      );
+      expect(storage.loadAdoptedRawChoice()).toEqual({ 'dg-category-essential': true });
+    });
+
     it('should return null when no preferences saved', () => {
       expect(storage.loadPreferences()).toBeNull();
     });
@@ -178,6 +197,26 @@ describe('StorageService', () => {
       expect(storage.loadBoundUserHash()).toBe('hash-a');
       storage.clearBoundUserHash();
       expect(storage.loadBoundUserHash()).toBeNull();
+    });
+  });
+
+  describe('ccpa opt-out', () => {
+    it('defaults to false, persists and clears', () => {
+      expect(storage.loadCcpaOptout()).toBe(false);
+      storage.saveCcpaOptout(true);
+      expect(storage.loadCcpaOptout()).toBe(true);
+      storage.clearCcpaOptout();
+      expect(storage.loadCcpaOptout()).toBe(false);
+    });
+
+    it('is wiped by clearAll and cleared by clearUserChoice', () => {
+      storage.saveCcpaOptout(true);
+      storage.clearAll();
+      expect(storage.loadCcpaOptout()).toBe(false);
+
+      storage.saveCcpaOptout(true);
+      storage.clearUserChoice();
+      expect(storage.loadCcpaOptout()).toBe(false);
     });
   });
 

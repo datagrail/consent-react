@@ -188,6 +188,12 @@ export class ConfigService {
       config.universalConsent = {
         enabled: parsed.universalConsent.enabled ?? false,
         syncOptout: parsed.universalConsent.sync_optout ?? false,
+        // Set only when present, for the reason noted above (TRUST-2603).
+        // A string only: a bad publish's number or object would otherwise go out as the
+        // X-DG-Api-Key header and fail auth opaquely instead of as a clear VALIDATION_ERROR.
+        ...(typeof parsed.universalConsent.apiKey === 'string' && parsed.universalConsent.apiKey
+          ? { apiKey: parsed.universalConsent.apiKey }
+          : {}),
       };
     }
 

@@ -1,6 +1,6 @@
 import { NativeModules } from 'react-native';
 import type { ATTStatus } from '../types';
-import { getPreferences, savePreferences } from '../ConsentManager';
+import { getPreferences, saveTrackingAuthorizationPreferences } from '../ConsentManager';
 import { mapATTStatusToConsent } from './attShared';
 
 interface DataGrailConsentATTModule {
@@ -30,7 +30,7 @@ export async function requestTrackingAuthorization(): Promise<ATTStatus> {
   const updatedPreferences = mapATTStatusToConsent(status, currentPreferences);
 
   if (updatedPreferences) {
-    await savePreferences(updatedPreferences);
+    await saveTrackingAuthorizationPreferences(updatedPreferences);
   }
 
   return status;

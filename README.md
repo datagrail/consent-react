@@ -90,13 +90,22 @@ const unsubscribe = onConsentChanged((preferences) => {
 
 Cross-device consent. Available when `universalConsent.enabled` is set on your DataGrail config; otherwise these throw a `ConsentError`.
 
-| Method                          | Parameters                                                               | Return Type                               | Description                                                              |
-| ------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `isUniversalConsentEnabled`     | —                                                                        | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
-| `fetchUniversalConsent`         | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
-| `rehydrateFromUniversalConsent` | `identifier: string, apiKey: string, trackingSignal?: ATTStatus`         | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
-| `setUserIdentifier`             | `identifier: string, options: { apiKey, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
-| `clearUserIdentifier`           | —                                                                        | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
+| Method                          | Parameters                                                                | Return Type                               | Description                                                              |
+| ------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| `isUniversalConsentEnabled`     | —                                                                         | `boolean`                                 | Whether cross-device consent is enabled for the loaded config.           |
+| `fetchUniversalConsent`         | `identifier: string, apiKey?: string, trackingSignal?: ATTStatus`         | `Promise<UniversalConsentRecord \| null>` | Read a stored record **without** changing local state. `null` on a miss. |
+| `rehydrateFromUniversalConsent` | `identifier: string, apiKey?: string, trackingSignal?: ATTStatus`         | `Promise<boolean>`                        | Read a stored record **and apply it** to local state. `false` on a miss. |
+| `setUserIdentifier`             | `identifier: string, options: { apiKey?, getSignature, trackingSignal? }` | `Promise<void>`                           | Register a user identifier and sync their consent. Reads, then writes.   |
+| `clearUserIdentifier`           | —                                                                         | `void`                                    | Log out: unbind the identity and return local consent to the default.    |
+
+`apiKey` is optional everywhere: when it's omitted, the SDK uses `universalConsent.apiKey` from the published config.json, so the key can be rotated server-side without an app release (TRUST-2603). An explicit `apiKey` wins. With neither, the call rejects with `VALIDATION_ERROR`.
+
+CCPA "Do Not Sell or Share" (works with or without Universal Consent; see [CCPA opt-out](#ccpa-do-not-sell-or-share-opt-out)):
+
+| Method          | Parameters                                                         | Return Type        | Description                                                                                                                         |
+| --------------- | ------------------------------------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `setCcpaOptout` | `optedOut: boolean, sync?: { identifier, apiKey?, getSignature? }` | `Promise<boolean>` | Record the user's explicit DNSMPI choice; optionally write it cross-device. Resolves `true` only when it was written to the record. |
+| `getCcpaOptout` | —                                                                  | `boolean`          | The stored DNSMPI choice. `false` unless the user opted out.                                                                        |
 
 ### ATT Methods (iOS)
 
@@ -172,7 +181,7 @@ interface UniversalConsentRecord {
   status: string;
   consentPreferences: UniversalConsentPreferences | null;
   consentMode: string | null;
-  ccpaOptout: boolean;
+  ccpaOptout: boolean; // the stored explicit DNSMPI choice, never derived
   platform: string | null;
   policyName: string | null;
   configVersion: string | null;
@@ -351,7 +360,7 @@ import {
 await initialize({ configUrl: 'https://your-config-url.com/config.json' });
 
 if (user.isLoggedIn) {
-  await rehydrateFromUniversalConsent(user.email, DG_API_KEY);
+  await rehydrateFromUniversalConsent(user.accountId, DG_API_KEY);
 }
 
 if (needsConsent()) {
@@ -368,7 +377,7 @@ When someone logs in or makes a choice, register their identifier. This reads th
 ```typescript
 import { setUserIdentifier } from '@datagrail.io/react-native-consent';
 
-await setUserIdentifier(user.email, { apiKey: DG_API_KEY, getSignature });
+await setUserIdentifier(user.accountId, { apiKey: DG_API_KEY, getSignature });
 ```
 
 To inspect a record without changing local state, use `fetchUniversalConsent` instead.
@@ -399,6 +408,33 @@ Some things the SDK cannot detect:
 - **Who made a pre-login choice.** On a login that finds no record, the SDK writes an explicit choice made on an unbound device, by design, even though an earlier user of a shared device may have made it. There is no shared-device or shared-account heuristic.
 - **Two people sharing one account.**
 
+### CCPA "Do Not Sell or Share" opt-out
+
+`ccpa_optout` on a Universal Consent record means one thing: the user's **explicit** CCPA/CPRA "Do Not Sell or Share My Personal Information" choice. The SDK never derives it from marketing consent, the ad-tracking signal (ATT / Android ad-ID opt-out), GPC or DNT. Neither iOS nor Android has an OS-level do-not-sell signal, so **your app is the source of truth**: call `setCcpaOptout` from your own DNSMPI control.
+
+```tsx
+import { setCcpaOptout, getCcpaOptout } from '@datagrail.io/react-native-consent';
+
+// Local only:
+await setCcpaOptout(true);
+
+// Logged-in user: also write it to their cross-device record.
+// Resolves true only if it reached the record (e.g. false when the device isn't bound to this user).
+const written = await setCcpaOptout(true, {
+  identifier: user.accountId,
+  apiKey: DG_API_KEY,
+  getSignature,
+});
+
+getCcpaOptout(); // true
+```
+
+- The flag is stored on the device and does not change any category or count as a banner answer.
+- With `sync`, it is written together with the user's current local categories, but only when Universal Consent is enabled, your config's `universalConsent.sync_optout` is on, the device is bound to that identifier (a `setUserIdentifier` call for it succeeded), and the user has made an explicit category choice. Otherwise it stays local and is sent with the next Universal Consent write.
+- `sync_optout` is only the per-customer gate: when it is off, every write sends `ccpa_optout: false`.
+- On a login, a found record's `ccpa_optout` replaces the local flag, like its categories. A setter call on its own does not make a login write a record. `clearUserIdentifier()` returns the flag to `false`; `reset()` wipes it.
+- Records written by older SDK versions may carry a value that was not an explicit choice; they are adopted as they are.
+
 ### How signals are applied
 
 A stored record is authoritative in **both** directions — it overrides local state whether it is more or less permissive. On top of that, opt-out signals suppress non-essential categories locally:
@@ -414,7 +450,7 @@ Suppression is one-directional: a signal can only turn categories **off**, never
 
 ### Identifier requirements
 
-The identifier is normalized (Unicode NFC → trim → lowercase) and hashed with SHA-256 before it leaves the device — the raw value is never transmitted. Use the same identifier everywhere the person appears (typically their email), or their consent will not match across platforms. An identifier that is empty after normalization is rejected with a `VALIDATION_ERROR`.
+The identifier is normalized (Unicode NFC → trim → lowercase) and hashed with SHA-256 before it leaves the device — the raw value is never transmitted. Use the same stable, opaque identifier everywhere the person appears (typically your own account ID for them), or their consent will not match across platforms. An identifier that is empty after normalization is rejected with a `VALIDATION_ERROR`.
 
 Hashing runs in a native module, so Universal Consent requires a development build. It does not work in Expo Go or on React Native Web.
 
@@ -543,7 +579,7 @@ Universal Consent hashes the user identifier in a native module, so it needs a d
 
 ### Consent is not following a user across devices
 
-- Confirm the identifier is byte-identical everywhere — the SDK normalizes and hashes it, so `User@Example.com ` and `user@example.com` match, but a username on one platform and an email on another will not.
+- Confirm the identifier is byte-identical everywhere. The SDK normalizes and hashes it, so `Acct-7F3A ` and `acct-7f3a` match, but two different IDs for the same person on two platforms will not.
 - Confirm the same `consentProjectId` is configured on every platform. The project ID is part of the hash.
 - `rehydrateFromUniversalConsent` returning `false` means no record was stored, not that the read failed. Use `fetchUniversalConsent` to inspect what the server has.
 

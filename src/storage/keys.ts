@@ -18,6 +18,19 @@ export const STORAGE_KEYS = {
   // currently bound to. Written only by setUserIdentifier; cleared by clearUserIdentifier and by
   // reset() (clearAll). Tells a login TRANSITION apart from a re-sync while already logged in.
   BOUND_USER_HASH: 'datagrail_consent_bound_user_hash',
+  // The user's EXPLICIT CCPA/CPRA "Do Not Sell or Share" choice (TRUST-2591). Written only by
+  // setCcpaOptout, by adopting a found Universal Consent record, and cleared to false by
+  // clearUserIdentifier / the neutral reset; wiped by reset() (clearAll). Never derived.
+  CCPA_OPTOUT: 'datagrail_consent_ccpa_optout',
+  // The RAW (not signal-reconciled) category map of the Universal Consent record that the stored
+  // preferences were adopted from. Local state holds the reconciled view, so a write-through that
+  // re-sends an adopted choice must send this instead, or a device-local suppression (ATT, the
+  // record's GPC) would be stored cross-device as a denial. Present only while the stored
+  // preferences are still that adopt: StorageService.savePreferences writes it with the preferences
+  // (any save without it removes it), and reset() wipes it.
+  // React Native only: iOS and Android keep the raw map inside their `datagrail_consent_sync_state`
+  // record, which this SDK does not have, so there is no native key to match.
+  ADOPTED_RAW_CHOICE: 'datagrail_consent_adopted_raw_choice',
 } as const;
 
 export const CURRENT_SCHEMA_VERSION = 2;

@@ -7,7 +7,7 @@ const mockSavePreferences = jest.fn<Promise<void>, [ConsentPreferences]>();
 
 jest.mock('../../src/ConsentManager', () => ({
   getPreferences: () => mockGetPreferences(),
-  savePreferences: (prefs: ConsentPreferences) => mockSavePreferences(prefs),
+  saveTrackingAuthorizationPreferences: (prefs: ConsentPreferences) => mockSavePreferences(prefs),
 }));
 
 // Mock native module
@@ -165,9 +165,7 @@ describe('ATT Bridge (iOS)', () => {
       const originalModule = NativeModules.DataGrailConsentATT;
       delete NativeModules.DataGrailConsentATT;
 
-      expect(() => getTrackingStatus()).toThrow(
-        'DataGrailConsentATT native module not found',
-      );
+      expect(() => getTrackingStatus()).toThrow('DataGrailConsentATT native module not found');
 
       NativeModules.DataGrailConsentATT = originalModule;
     });
