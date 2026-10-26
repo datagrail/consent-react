@@ -43,7 +43,10 @@ export const STORAGE_KEYS = {
   // preferences were adopted from. Local state holds the reconciled view, so a write-through that
   // re-sends an adopted choice must send this instead, or a device-local suppression (ATT, the
   // record's GPC) would be stored cross-device as a denial. Present only while the stored
-  // preferences are still that adopt: an explicit save, the neutral reset and reset() remove it.
+  // preferences are still that adopt: StorageService.savePreferences writes it with the preferences
+  // (any save without it removes it), and reset() wipes it.
+  // React Native only: iOS and Android keep the raw map inside their `datagrail_consent_sync_state`
+  // record, which this SDK does not have, so there is no native key to match.
   ADOPTED_RAW_CHOICE: 'datagrail_consent_adopted_raw_choice',
 } as const;
 

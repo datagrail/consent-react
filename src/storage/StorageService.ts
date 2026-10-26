@@ -17,8 +17,23 @@ export class StorageService {
     runMigrations(this);
   }
 
-  savePreferences(preferences: ConsentPreferences): void {
+  /**
+   * Store the preferences, and with them the adopted raw choice they are a view of. `adoptedRaw` is
+   * the RAW category map of the Universal Consent record the preferences are the signal-reconciled
+   * view of; omit it (or pass `null`) for any other preferences. The two are written together, so a
+   * plain save drops a leftover adopted raw choice by construction: no writer of the preferences
+   * can leave an old record's map behind to be written cross-device as the user's choice.
+   */
+  savePreferences(
+    preferences: ConsentPreferences,
+    adoptedRaw: Record<string, boolean> | null = null,
+  ): void {
     this.storage.set(STORAGE_KEYS.PREFERENCES, JSON.stringify(preferences));
+    if (adoptedRaw === null) {
+      this.clearAdoptedRawChoice();
+    } else {
+      this.storage.set(STORAGE_KEYS.ADOPTED_RAW_CHOICE, JSON.stringify(adoptedRaw));
+    }
   }
 
   loadPreferences(): ConsentPreferences | null {
@@ -70,14 +85,6 @@ export class StorageService {
     this.clearAdoptedRawChoice();
     this.clearCcpaOptout();
     this.clearDecisionTs();
-  }
-
-  /**
-   * Record the RAW category map of the Universal Consent record the stored preferences were just
-   * adopted from (the stored preferences are its signal-reconciled view).
-   */
-  saveAdoptedRawChoice(cookieOptions: Record<string, boolean>): void {
-    this.storage.set(STORAGE_KEYS.ADOPTED_RAW_CHOICE, JSON.stringify(cookieOptions));
   }
 
   /** The RAW map the stored preferences were adopted from, or `null` when they are not an adopt. */

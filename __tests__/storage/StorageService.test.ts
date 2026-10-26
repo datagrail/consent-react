@@ -26,6 +26,16 @@ describe('StorageService', () => {
       expect(loaded).toEqual(preferences);
     });
 
+    it('stores an adopted raw choice with the preferences, and a plain save drops it', () => {
+      storage.savePreferences(preferences, { 'dg-category-marketing': true });
+      expect(storage.loadAdoptedRawChoice()).toEqual({ 'dg-category-marketing': true });
+
+      // Any other writer of the preferences (initialize()'s defaults, the neutral reset, an
+      // explicit save) cannot leave an old record's raw map behind.
+      storage.savePreferences(preferences);
+      expect(storage.loadAdoptedRawChoice()).toBeNull();
+    });
+
     it('should return null when no preferences saved', () => {
       expect(storage.loadPreferences()).toBeNull();
     });
