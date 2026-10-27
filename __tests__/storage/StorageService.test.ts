@@ -141,6 +141,19 @@ describe('StorageService', () => {
     });
   });
 
+  describe('ccpaOptout pending marker', () => {
+    it('reads back a valid pending time and rejects a malformed or implausible one', () => {
+      const raw = new (require('react-native-mmkv').MMKV)({ id: 'test-storage' });
+      const now = Math.floor(Date.now() / 1000);
+      storage.saveCcpaOptout(true, now);
+      expect(storage.loadCcpaOptoutPendingSince()).toBe(now);
+      for (const bad of [-1, 1.5, now + 3600]) {
+        raw.set('datagrail_consent_ccpa_optout_pending_sync', bad);
+        expect(storage.loadCcpaOptoutPendingSince()).toBeNull();
+      }
+    });
+  });
+
   describe('pendingEvents', () => {
     it('should save and load pending events', () => {
       const events = [

@@ -4,6 +4,7 @@ import type { NetworkService } from '../network/NetworkService';
 import { generateNonceHex } from '../storage/uuid';
 import { computeUserHash } from './userHash';
 import { sha256Hex } from './sha256';
+import { nowSeconds } from './decisionTs';
 import type {
   SignatureProvider,
   UniversalConsentPreferences,
@@ -192,37 +193,123 @@ export class UniversalConsentService {
    * `X-DG-Api-Key`, no signature/timestamp/nonce headers.
    *
    * @param ccpaOptout the user's RAW local CCPA "Do Not Sell or Share" flag (set by
-   *   `setCcpaOptout` or adopted from a record). Written as `true` only when the
-   *   `universalConsent.syncOptout` gate is also on. Never derived from marketing consent or the
+   *   `setCcpaOptout` or adopted from a record). Sent only when the `universalConsent.syncOptout`
+   *   gate is on; with it off the body has no `ccpa_optout` key. Never derived from marketing consent or the
    *   device's ad-tracking signal — that signal is narrower than a do-not-sell choice.
+   * @param decisionTs when the user made the choice being written, in unix seconds (TRUST-3225). Sent
+   *   as the body's `decision_ts` with `is_explicit: true`, and signed into provDigest. When unknown
+   *   (`null`/omitted: a choice stored before the SDK recorded decision times) the request timestamp
+   *   stands in, which is exactly what the edge defaults a provenance-free write to.
+   * @returns the record-level fields the edge kept a newer stored value for (`stale_fields` on a
+   *   200), e.g. `['ccpa_optout']` when the record already holds a newer CCPA decision.
+   *
+   * `ccpaOptout: null`, or the syncOptout gate off, omits the field, leaving the record's register
+   * untouched: the write carries no CCPA decision.
    */
   async save(
     config: ConsentConfig,
     identifier: string,
     preferences: UniversalConsentPreferences,
     apiKey: string,
-    ccpaOptout: boolean,
+    ccpaOptout: boolean | null,
     getSignature?: SignatureProvider,
-  ): Promise<void> {
+    decisionTs?: number | null,
+  ): Promise<{ staleFields: string[] }> {
+    // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591). With it off the field
+    // is left out entirely (TRUST-3381, as web and the native SDKs): a `false` would record "not
+    // opted out" and could override a real opt-out made on another device. With it on, `null` omits
+    // it too. `undefined` drops out of the JSON.
+    const syncsCcpaOptout = config.universalConsent?.syncOptout === true;
+    const ccpaField = !syncsCcpaOptout || ccpaOptout === null ? undefined : ccpaOptout;
+    return this.post(config, identifier, apiKey, getSignature, decisionTs, (userHash, ts) => ({
+      customer_id: config.dgCustomerId,
+      user_hash: userHash,
+      consent_preferences: {
+        isCustomised: preferences.isCustomised,
+        cookieOptions: preferences.cookieOptions,
+      },
+      consent_mode: config.consentMode,
+      ccpa_optout: ccpaField,
+      platform: PLATFORM,
+      policy_name: config.consentPolicy.name,
+      config_version: config.version,
+      is_explicit: true,
+      decision_ts: ts,
+    }));
+  }
+
+  /**
+   * Write the user's CCPA "Do Not Sell or Share" choice on its own (TRUST-3308): the body carries
+   * `ccpa_optout` and provenance only, with an empty `cookieOptions` map and no `isCustomised` or
+   * record metadata, so the edge advances the `ccpa_optout` register alone (same shape as
+   * consent-banner#756). Dated at `decisionTs`, when the choice was made.
+   *
+   * With the `universalConsent.syncOptout` gate off this sends nothing and resolves `null`: the SDK
+   * never puts the CCPA choice on the record then, and a dated "not opted out" could override a real
+   * opt-out recorded on another device.
+   *
+   * @returns `null` when nothing was sent, else the record-level fields the edge kept a newer stored
+   *   value for (`['ccpa_optout']` when the record already holds a newer CCPA decision).
+   */
+  async saveCcpaOptout(
+    config: ConsentConfig,
+    identifier: string,
+    apiKey: string,
+    write: { ccpaOptout: boolean; decisionTs: number; getSignature?: SignatureProvider },
+  ): Promise<{ staleFields: string[] } | null> {
+    if (config.universalConsent?.syncOptout !== true) {
+      return null;
+    }
+    return this.post(
+      config,
+      identifier,
+      apiKey,
+      write.getSignature,
+      write.decisionTs,
+      (userHash, ts) => ({
+        customer_id: config.dgCustomerId,
+        user_hash: userHash,
+        consent_preferences: { cookieOptions: {} },
+        ccpa_optout: write.ccpaOptout,
+        is_explicit: true,
+        decision_ts: ts,
+      }),
+    );
+  }
+
+  /** Sign (when a provider is given) and POST one write; `buildBody` gets the hash and decision time. */
+  private async post(
+    config: ConsentConfig,
+    identifier: string,
+    apiKey: string,
+    getSignature: SignatureProvider | undefined,
+    decisionTs: number | null | undefined,
+    buildBody: (userHash: string, effectiveDecisionTs: number) => Record<string, unknown>,
+  ): Promise<{ staleFields: string[] }> {
     const projectId = UniversalConsentService.requireProjectId(config);
     const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
 
     const headers: Record<string, string> = { 'X-DG-Api-Key': apiKey };
 
+    // The SDK owns the timestamp (and nonce, below) and builds the string-to-sign; the customer's
+    // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
+    const timestamp = nowSeconds();
+    // The write carries the TRUE time of the choice (TRUST-3225). Sending the request time instead
+    // would let a stale device's re-sync out-rank a newer revocation made on another device, since
+    // the edge's per-category merge is decision-time last-writer-wins.
+    const effectiveDecisionTs = decisionTs ?? timestamp;
+
     if (getSignature) {
-      // The SDK owns the timestamp and nonce and builds the string-to-sign; the customer's
-      // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
-      const timestamp = Math.floor(Date.now() / 1000);
       const nonce = generateNonceHex();
 
       // Bind the write's provenance (is_explicit, decision_ts, actor_id) into the signed string so
-      // an intermediary cannot rewrite it on an otherwise-valid request. This SDK sends no
-      // provenance in the body, so it signs the RESOLVED-DEFAULT triple the edge synthesizes for a
-      // provenance-free write: is_explicit → "true", decision_ts → this same X-DG-Timestamp,
-      // actor_id → "". `\n` (U+000A) delimits the fields; actor_id is terminal so an embedded
-      // delimiter cannot forge the digest. Must stay byte-identical to the edge/other SDKs — the
-      // signing-vectors corpus is the enforcement.
-      const provInput = `true\n${timestamp}\n`;
+      // an intermediary cannot rewrite it on an otherwise-valid request. The body carries
+      // `is_explicit: true` and `decision_ts` and omits `actor_id`, so the triple the edge resolves
+      // — and this digest — is is_explicit "true", decision_ts, actor_id "". `\n` (U+000A) delimits
+      // the fields; actor_id is terminal so an embedded delimiter cannot forge the digest. Must stay
+      // byte-identical to the edge/other SDKs — the signing-vectors corpus is the enforcement. With
+      // an unknown decision time this is byte-identical to the old resolved-default digest.
+      const provInput = `true\n${effectiveDecisionTs}\n`;
       const provDigest = await sha256Hex(provInput);
       const stringToSign = `${config.dgCustomerId}:${userHash}:${timestamp}:${nonce}:${provDigest}`;
 
@@ -247,20 +334,7 @@ export class UniversalConsentService {
       headers['X-DG-Key-Id'] = sig.keyId;
     }
 
-    const body = JSON.stringify({
-      customer_id: config.dgCustomerId,
-      user_hash: userHash,
-      consent_preferences: {
-        isCustomised: preferences.isCustomised,
-        cookieOptions: preferences.cookieOptions,
-      },
-      consent_mode: config.consentMode,
-      // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591).
-      ccpa_optout: config.universalConsent?.syncOptout === true && ccpaOptout,
-      platform: PLATFORM,
-      policy_name: config.consentPolicy.name,
-      config_version: config.version,
-    });
+    const body = JSON.stringify(buildBody(userHash, effectiveDecisionTs));
 
     const response = await this.network.request({
       url: UniversalConsentService.baseUrl(config),
@@ -275,5 +349,17 @@ export class UniversalConsentService {
         `Universal consent write failed with status ${response.status}`,
       );
     }
+    return { staleFields: parseStaleFields(response.data) };
+  }
+}
+
+/** `stale_fields` from a 200 write response body, or [] when absent or unparseable. */
+function parseStaleFields(data: string): string[] {
+  try {
+    const parsed = JSON.parse(data) as { stale_fields?: unknown } | null;
+    const fields = parsed?.stale_fields;
+    return Array.isArray(fields) ? fields.filter((f): f is string => typeof f === 'string') : [];
+  } catch {
+    return [];
   }
 }

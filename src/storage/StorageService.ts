@@ -3,6 +3,7 @@ import { MMKV } from 'react-native-mmkv';
 import type { ConsentPreferences, ConsentConfig } from '../types';
 import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
 import { runMigrations } from './migrations';
+import { DECISION_TS_STORED_TOLERANCE_SECONDS, nowSeconds } from '../universal/decisionTs';
 import { booleanEntries } from '../universal/types';
 
 /**
@@ -84,6 +85,7 @@ export class StorageService {
     this.storage.delete(STORAGE_KEYS.USER_CONSENTED);
     this.clearAdoptedRawChoice();
     this.clearCcpaOptout();
+    this.clearDecisionTs();
   }
 
   /** The RAW map the stored preferences were adopted from, or `null` when they are not an adopt. */
@@ -107,9 +109,142 @@ export class StorageService {
     this.storage.delete(STORAGE_KEYS.ADOPTED_RAW_CHOICE);
   }
 
-  /** Persist the user's explicit CCPA "Do Not Sell or Share" choice. */
-  saveCcpaOptout(optedOut: boolean): void {
+  /**
+   * Record WHEN the stored choice was made, as unix seconds (TRUST-3225). With no argument it is a
+   * choice made now. A Universal Consent adopt passes the adopted record's time instead.
+   *
+   * The default is MONOTONIC: never earlier than the previous stamp + 1 (capped so it always reads
+   * back), so two choices in the same second, or a choice made right after adopting a record stamped
+   * slightly ahead of this clock, still order correctly. This is the only clock-skew protection.
+   * Times from different devices are compared as-is, so skew (up to the edge's ~300 s clamp) can
+   * still mis-order changes made within that window of each other.
+   */
+  saveDecisionTs(decisionTs?: number): void {
+    if (decisionTs !== undefined) {
+      this.storage.set(STORAGE_KEYS.DECISION_TS, decisionTs);
+      return;
+    }
+    this.stampMonotonic(STORAGE_KEYS.DECISION_TS);
+  }
+
+  /**
+   * When the stored choice was made, or `null` when unknown: nothing is stored (no choice, or one
+   * stored before TRUST-3225), the value is not a non-negative safe integer, or it is more than
+   * DECISION_TS_STORED_TOLERANCE_SECONDS ahead of this clock. A stamp that far ahead is bogus (the
+   * clock was ahead and has since been corrected) and would otherwise out-rank every record forever.
+   */
+  loadDecisionTs(): number | null {
+    return this.loadStoredTs(STORAGE_KEYS.DECISION_TS);
+  }
+
+  /**
+   * The one clock-skew rule for every stored decision time (the category choice's, the CCPA floor,
+   * the pending CCPA choice's): `null` unless it is a non-negative safe integer no more than
+   * DECISION_TS_STORED_TOLERANCE_SECONDS ahead of this clock.
+   */
+  private loadStoredTs(key: string): number | null {
+    const value = this.storage.getNumber(key);
+    if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
+      return null;
+    }
+    return value <= nowSeconds() + DECISION_TS_STORED_TOLERANCE_SECONDS ? value : null;
+  }
+
+  /**
+   * Store a decision made now under `key` and return it: MONOTONIC, never earlier than the previous
+   * valid stamp + 1, and capped so it always reads back through loadStoredTs.
+   */
+  private stampMonotonic(key: string): number {
+    const now = nowSeconds();
+    const previous = this.loadStoredTs(key);
+    const stamp =
+      previous !== null
+        ? Math.min(Math.max(now, previous + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
+        : now;
+    this.storage.set(key, stamp);
+    return stamp;
+  }
+
+  /** The stored choice is no longer one anyone made at a known time. */
+  clearDecisionTs(): void {
+    this.storage.delete(STORAGE_KEYS.DECISION_TS);
+  }
+
+  /**
+   * Persist the user's explicit CCPA "Do Not Sell or Share" choice. Every write states whether the
+   * value is pending sync (TRUST-3308): only setCcpaOptout's not-yet-written choice on a bound device
+   * is; anything else (adopting a record, the write-through restore of a synced value) is not.
+   */
+  saveCcpaOptout(optedOut: boolean, pendingSince: number | null = null): void {
     this.storage.set(STORAGE_KEYS.CCPA_OPTOUT, optedOut);
+    if (pendingSince !== null) {
+      // The value is when the pending choice was made (unix seconds): every deferred or retried
+      // write sends it as decision_ts, so a late write never outranks a newer choice elsewhere.
+      this.storage.set(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC, pendingSince);
+    } else {
+      this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
+    }
+  }
+
+  /**
+   * When the pending setCcpaOptout choice was made (unix seconds), or `null` when none is pending.
+   * Validated like loadDecisionTs, so a bad stored value never goes on the wire as `decision_ts`.
+   */
+  loadCcpaOptoutPendingSince(): number | null {
+    return this.loadStoredTs(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
+  }
+
+  /** Whether the stored CCPA flag is a setCcpaOptout choice that has not reached the record yet. */
+  hasPendingCcpaOptoutSync(): boolean {
+    return this.loadCcpaOptoutPendingSince() !== null;
+  }
+
+  /**
+   * A write carrying `sent` (the choice made at `since`) settled at the edge: it reached the record,
+   * or the record already held a newer CCPA decision. A choice made since is left pending.
+   */
+  markCcpaOptoutSynced(
+    sent: boolean,
+    since: number | null = this.loadCcpaOptoutPendingSince(),
+  ): void {
+    if (
+      this.hasPendingCcpaOptoutSync() &&
+      this.loadCcpaOptout() === sent &&
+      this.loadCcpaOptoutPendingSince() === since
+    ) {
+      this.saveCcpaOptout(sent);
+    }
+  }
+
+  /**
+   * Stamp a new CCPA choice made now and return its decision time (TRUST-3225). MONOTONIC per device:
+   * strictly after the last CCPA decision time this device stored or read off a record, so a clock
+   * running behind the record's, or two choices in the same second, still order correctly at the
+   * edge. Capped like saveDecisionTs so the stamp always reads back; a stored floor implausibly far
+   * ahead (a since-corrected clock) is ignored rather than followed into the future.
+   */
+  stampCcpaDecision(): number {
+    return this.stampMonotonic(STORAGE_KEYS.CCPA_DECISION_TS);
+  }
+
+  /**
+   * A Universal Consent record last decided at `recordTs` was read: raise the CCPA floor to it, so a
+   * choice made after reading it is stamped after every register it holds. Never lowers the floor.
+   */
+  raiseCcpaDecisionFloor(recordTs: number): void {
+    const floor = this.loadCcpaDecisionTs();
+    if (floor === null || recordTs > floor) {
+      this.storage.set(STORAGE_KEYS.CCPA_DECISION_TS, recordTs);
+    }
+  }
+
+  /**
+   * The CCPA decision floor, or `null` when none is stored, it is not a non-negative safe integer,
+   * or it is more than DECISION_TS_STORED_TOLERANCE_SECONDS ahead of this clock (same guard as
+   * loadDecisionTs).
+   */
+  loadCcpaDecisionTs(): number | null {
+    return this.loadStoredTs(STORAGE_KEYS.CCPA_DECISION_TS);
   }
 
   /** The stored CCPA opt-out choice; `false` ("not opted out") when none is stored. */
@@ -119,6 +254,7 @@ export class StorageService {
 
   clearCcpaOptout(): void {
     this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT);
+    this.storage.delete(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
   }
 
   saveBoundUserHash(userHash: string): void {
