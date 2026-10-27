@@ -113,9 +113,12 @@ export class StorageService {
    * Record WHEN the stored choice was made, as unix seconds (TRUST-3225). With no argument it is a
    * choice made now. A Universal Consent adopt passes the adopted record's time instead.
    *
-   * The default is MONOTONIC: never earlier than the previous stamp + 1 (capped so it always reads
-   * back), so two choices in the same second, or a choice made right after adopting a record stamped
-   * slightly ahead of this clock, still order correctly. This is the only clock-skew protection.
+   * The default is MONOTONIC: never earlier than the latest of the previous stamp, this device's
+   * last CCPA decision time and any record updated_at read here, + 1 (capped so it always reads
+   * back). So two choices in the same second, a choice made right after adopting a record stamped
+   * slightly ahead of this clock, or one made right after this device's own CCPA write (which moves
+   * the record's updated_at to that write's time) still order after the record and are not lost to a
+   * same-second tie on the next re-sync. This is the only clock-skew protection.
    * Times from different devices are compared as-is, so skew (up to the edge's ~300 s clamp) can
    * still mis-order changes made within that window of each other.
    */
@@ -124,7 +127,9 @@ export class StorageService {
       this.storage.set(STORAGE_KEYS.DECISION_TS, decisionTs);
       return;
     }
-    this.stampMonotonic(STORAGE_KEYS.DECISION_TS);
+    // CCPA_DECISION_TS holds both this device's last CCPA decision time and the latest record
+    // updated_at read here (raiseCcpaDecisionFloor), so it floors the category stamp too.
+    this.stampMonotonic(STORAGE_KEYS.DECISION_TS, [STORAGE_KEYS.CCPA_DECISION_TS]);
   }
 
   /**
@@ -151,12 +156,16 @@ export class StorageService {
   }
 
   /**
-   * Store a decision made now under `key` and return it: MONOTONIC, never earlier than the previous
-   * valid stamp + 1, and capped so it always reads back through loadStoredTs.
+   * Store a decision made now under `key` and return it: MONOTONIC, never earlier than the latest
+   * valid stamp under `key` or any of `floorKeys`, + 1, and capped so it always reads back through
+   * loadStoredTs.
    */
-  private stampMonotonic(key: string): number {
+  private stampMonotonic(key: string, floorKeys: readonly string[] = []): number {
     const now = nowSeconds();
-    const previous = this.loadStoredTs(key);
+    const previous = [key, ...floorKeys].reduce<number | null>((latest, k) => {
+      const ts = this.loadStoredTs(k);
+      return ts !== null && (latest === null || ts > latest) ? ts : latest;
+    }, null);
     const stamp =
       previous !== null
         ? Math.min(Math.max(now, previous + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
@@ -203,10 +212,7 @@ export class StorageService {
    * A write carrying `sent` (the choice made at `since`) settled at the edge: it reached the record,
    * or the record already held a newer CCPA decision. A choice made since is left pending.
    */
-  markCcpaOptoutSynced(
-    sent: boolean,
-    since: number | null = this.loadCcpaOptoutPendingSince(),
-  ): void {
+  markCcpaOptoutSynced(sent: boolean, since: number | null): void {
     if (
       this.hasPendingCcpaOptoutSync() &&
       this.loadCcpaOptout() === sent &&

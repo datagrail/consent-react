@@ -850,13 +850,24 @@ async function rehydrateReturningRawPreferences(
  * - `bindOnly` — no cross-device write. Optionally return local state to neutral (a found record's
  *   existence overrides a pre-login or other-user choice) and/or overwrite the local CCPA flag from
  *   the record (`adoptCcpaFromRecord`: a boolean overwrites it, `null` leaves it untouched).
- * - `write` — write the current local choice through, then bind.
+ * - `write` — write the current local choice through, then bind. The CCPA side of that write is
+ *   decided here too (TRUST-3391): `carryCcpa` sends the local flag on the category write (a miss
+ *   creating the record with nothing pending); `restoreLocalCcpa` puts the captured local flag (and
+ *   its pending marker) back over whatever the read stored; `adoptCcpaFromRecord` adopts a found
+ *   signal-only record's flag on a re-sync, which the read returned before doing; `flushPendingCcpa`
+ *   sends a pending choice as its own CCPA-only write after the category write.
  * - `flushCcpa` — a RE-SYNC adopted the record's categories, but a setCcpaOptout choice is still
  *   pending sync: send it as a CCPA-only write dated when it was made, then bind (TRUST-3308).
  */
 type IdentityBindDecision =
   | { kind: 'bindOnly'; returnToNeutral: boolean; adoptCcpaFromRecord: boolean | null }
-  | { kind: 'write' }
+  | {
+      kind: 'write';
+      carryCcpa: boolean;
+      restoreLocalCcpa: boolean;
+      adoptCcpaFromRecord: boolean | null;
+      flushPendingCcpa: boolean;
+    }
   | { kind: 'flushCcpa' };
 
 /** The inputs the `setUserIdentifier` decision reads: the read result and the captured local state. */
@@ -884,6 +895,8 @@ interface IdentityBindInput {
   syncOptout: boolean;
   /** A setCcpaOptout choice has not reached the record yet, so a RE-SYNC must keep it (TRUST-3308). */
   ccpaPendingSync: boolean;
+  /** A setCcpaOptout call landed while the read was in flight: it is newer than the record. */
+  ccpaSetDuringRead: boolean;
 }
 
 /**
@@ -905,7 +918,37 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
     recordCcpaOptout,
     syncOptout,
     ccpaPendingSync,
+    ccpaSetDuringRead,
   } = input;
+
+  // The one rule for a RE-SYNC of a found record adopting the record's CCPA flag, on a write or
+  // not: only under the syncOptout gate, and never over a setCcpaOptout choice still pending sync
+  // (TRUST-3308) or one made during the read. `null` leaves the local flag as it is.
+  const recordCcpaToAdopt =
+    recordFound && isResync && syncOptout && !ccpaPendingSync && !ccpaSetDuringRead
+      ? recordCcpaOptout === true
+      : null;
+
+  // A write-through. A genuine miss creates the record, so the local CCPA flag rides the write. A
+  // RE-SYNC write over a FOUND record carries a category change, not a CCPA decision: the flag was
+  // not decided at the categories' time, so sending it would let this device revoke a newer opt-out
+  // made on another device. A re-sync's pending choice is never carried by the category write
+  // either (that write is dated at the categories' time, which can be older than the CCPA choice):
+  // it is flushed by its own CCPA-only write afterwards. Locally, the captured flag is put back
+  // unless this is a found re-sync with nothing pending, where the record's flag stands: the read
+  // adopted it from a record with usable prefs, and a signal-only record's is adopted here.
+  const write = (): IdentityBindDecision => {
+    const foundResync = isResync && recordFound;
+    const flushPendingCcpa = isResync && ccpaPendingSync;
+    const restoreLocalCcpa = !foundResync || ccpaPendingSync;
+    return {
+      kind: 'write',
+      carryCcpa: !foundResync && !flushPendingCcpa,
+      restoreLocalCcpa,
+      adoptCcpaFromRecord: !restoreLocalCcpa && !hasUsablePrefs ? recordCcpaToAdopt : null,
+      flushPendingCcpa,
+    };
+  };
 
   // LOGIN + FOUND signal-only record (consent_preferences ABSENT — TRUST-2961: a present but empty
   // map is an answered essential-only choice, adopted by the read as usable prefs, not here). There
@@ -935,7 +978,7 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
   // explicit local choice (config defaults are never written) and the syncOptout gate on.
   if (hasUsablePrefs) {
     if (isResync && hasExplicitChoice && localIsNewerThanRecord) {
-      return { kind: 'write' };
+      return write();
     }
     if (isResync && hasExplicitChoice && syncOptout && ccpaPendingSync) {
       return { kind: 'flushCcpa' };
@@ -949,17 +992,16 @@ export function decideIdentityBind(input: IdentityBindInput): IdentityBindDecisi
   // found signal-only record adopts its CCPA flag under the syncOptout gate, unless a setCcpaOptout
   // choice is still pending sync (TRUST-3308).
   if (!hasExplicitChoice) {
-    const adoptCcpa = recordFound && isResync && syncOptout && !ccpaPendingSync;
     return {
       kind: 'bindOnly',
       returnToNeutral: boundToOther,
-      adoptCcpaFromRecord: adoptCcpa ? recordCcpaOptout === true : null,
+      adoptCcpaFromRecord: recordCcpaToAdopt,
     };
   }
 
   // A miss (or a found signal-only record on a RE-SYNC) WITH an explicit local choice: write it
   // through — sync-on-change over a found record, or this identity's first record on a miss.
-  return { kind: 'write' };
+  return write();
 }
 
 /**
@@ -1136,7 +1178,20 @@ export async function setUserIdentifier(
     recordCcpaOptout,
     syncOptout: currentConfig!.universalConsent?.syncOptout === true,
     ccpaPendingSync: localCcpaPendingSync,
+    ccpaSetDuringRead,
   });
+  // The one CCPA-only flush of a pending choice, dated when it was made. Both decisions that flush
+  // are RE-SYNCs with a pending choice, so the device is bound to `userHash` and the time is known.
+  const flushPendingCcpaOptout = () =>
+    sendCcpaOptout({
+      identifier,
+      apiKey,
+      getSignature,
+      ccpaOptout: localCcpaOptout,
+      decidedAt: localCcpaPendingSince!,
+      withCategories: false,
+      op: { epoch: epochAtEntry, boundHash: userHash },
+    });
 
   if (decision.kind === 'write') {
     // Write the user's CURRENT LOCAL choice: a re-sync's sync-on-change over a found record, or an
@@ -1148,28 +1203,12 @@ export async function setUserIdentifier(
       cookieOptions: localRawChoice!,
     };
 
-    // A genuine miss creates the record, so the local CCPA flag rides the write. A RE-SYNC
-    // write-through carries a category change, not a CCPA decision: the flag was not decided at
-    // the categories' time, so sending it would let this device revoke a newer opt-out made on
-    // another device. It leaves the record's flag alone (a pending choice is flushed by its own
-    // CCPA-only write below) and keeps the record's flag locally unless a choice is pending.
-    // A write-through over a FOUND record on a re-sync; a miss (login or re-sync) creates the record.
-    const isFoundResyncWrite = isResync && recordFound;
-    // A re-sync's pending setCcpaOptout choice is never carried by the category write, over a found
-    // record or a miss: that write is dated at the categories' time, which can be older than the
-    // CCPA choice. It gets its own CCPA-only write at its own time after the category write.
-    const flushPendingCcpa = isResync && localCcpaPendingSince !== null;
-    const ccpaOnWrite = isFoundResyncWrite || flushPendingCcpa ? null : localCcpaOptout;
-    if (!isFoundResyncWrite || localCcpaPendingSync) {
+    // What the write does with the CCPA flag is part of the decision (see decideIdentityBind).
+    const ccpaOnWrite = decision.carryCcpa ? localCcpaOptout : null;
+    if (decision.restoreLocalCcpa) {
       storageService!.saveCcpaOptout(localCcpaOptout, localCcpaPendingSince);
-    } else if (
-      rawFromRecord === null &&
-      !ccpaSetDuringRead &&
-      currentConfig!.universalConsent?.syncOptout === true
-    ) {
-      // A found signal-only record: the read returned before adopting anything, so its flag has to
-      // be adopted here, as the no-explicit-choice re-sync does in decideIdentityBind.
-      storageService!.saveCcpaOptout(recordCcpaOptout === true);
+    } else if (decision.adoptCcpaFromRecord !== null) {
+      storageService!.saveCcpaOptout(decision.adoptCcpaFromRecord);
     }
     // Same for the decision time: the write carries the local choice, so local keeps its time.
     if (localDecisionTs !== null) {
@@ -1217,16 +1256,8 @@ export async function setUserIdentifier(
       if (ccpaOnWrite !== null) {
         // The flag reached the record (the service only carries it under the syncOptout gate).
         storageService!.markCcpaOptoutSynced(localCcpaOptout, localCcpaPendingSince);
-      } else if (flushPendingCcpa) {
-        await sendCcpaOptout({
-          identifier,
-          apiKey,
-          getSignature,
-          ccpaOptout: localCcpaOptout,
-          decidedAt: localCcpaPendingSince!,
-          withCategories: false,
-          op: { epoch: epochAtEntry, boundHash: userHash },
-        });
+      } else if (decision.flushPendingCcpa) {
+        await flushPendingCcpaOptout();
       }
     }
   } else if (decision.kind === 'flushCcpa') {
@@ -1234,17 +1265,7 @@ export async function setUserIdentifier(
     eventEmitter.emit(adoptedPreferences!);
     // The read adopted the record's categories and (pending) kept the local CCPA flag: send that
     // choice as its own CCPA-only write, dated when it was made, so no category is re-stamped.
-    // decideIdentityBind returns flushCcpa only for a RE-SYNC with a pending choice, so the device
-    // is bound to `userHash` and the pending time is known.
-    await sendCcpaOptout({
-      identifier,
-      apiKey,
-      getSignature,
-      ccpaOptout: localCcpaOptout,
-      decidedAt: localCcpaPendingSince!,
-      withCategories: false,
-      op: { epoch: epochAtEntry, boundHash: userHash },
-    });
+    await flushPendingCcpaOptout();
   } else {
     // No write. A found record's existence can override a pre-login or other-user local choice
     // (returnToNeutral), and/or the record is authoritative for the stored CCPA flag

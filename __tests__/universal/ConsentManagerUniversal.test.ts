@@ -1559,7 +1559,23 @@ describe('ConsentManager — Universal Consent', () => {
       recordCcpaOptout: null as boolean | null,
       syncOptout: false,
       ccpaPendingSync: false,
+      ccpaSetDuringRead: false,
     };
+    // A write-through's CCPA side (TRUST-3391): carry the flag on the write (a miss with nothing
+    // pending), restore the captured local flag, adopt a found signal-only record's, flush a pending one.
+    const write = (ccpa: {
+      carryCcpa?: boolean;
+      restoreLocalCcpa?: boolean;
+      adoptCcpaFromRecord?: boolean | null;
+      flushPendingCcpa?: boolean;
+    }) => ({
+      kind: 'write',
+      carryCcpa: false,
+      restoreLocalCcpa: false,
+      adoptCcpaFromRecord: null,
+      flushPendingCcpa: false,
+      ...ccpa,
+    });
 
     it('login + found signal-only record: bindOnly, neutral when explicit/other state, adopts record CCPA', () => {
       expect(
@@ -1598,7 +1614,7 @@ describe('ConsentManager — Universal Consent', () => {
           hasExplicitChoice: true,
           localIsNewerThanRecord: true,
         }),
-      ).toEqual({ kind: 'write' });
+      ).toEqual(write({}));
     });
 
     it('found usable record + re-sync change that is NOT newer than the record: adopt (TRUST-3225)', () => {
@@ -1660,12 +1676,11 @@ describe('ConsentManager — Universal Consent', () => {
         ccpaPendingSync: true,
       };
       expect(decideIdentityBind(resyncAdopt)).toEqual({ kind: 'flushCcpa' });
-      // A newer local choice is a write-through. Over a found record it omits the CCPA flag and the
-      // setUserIdentifier executor flushes the pending choice after it (TRUST-3391 moves that
-      // choice into this decision).
-      expect(decideIdentityBind({ ...resyncAdopt, localIsNewerThanRecord: true })).toEqual({
-        kind: 'write',
-      });
+      // A newer local choice is a write-through. Over a found record it omits the CCPA flag, keeps
+      // the pending choice locally and flushes it after the category write.
+      expect(decideIdentityBind({ ...resyncAdopt, localIsNewerThanRecord: true })).toEqual(
+        write({ restoreLocalCcpa: true, flushPendingCcpa: true }),
+      );
       // No flush on a login, with the gate off, or without an explicit local choice.
       const adopt = { kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null };
       expect(decideIdentityBind({ ...resyncAdopt, isResync: false })).toEqual(adopt);
@@ -1674,7 +1689,11 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     it('miss (or re-sync signal-only) + explicit local choice: write', () => {
-      expect(decideIdentityBind({ ...base, hasExplicitChoice: true })).toEqual({ kind: 'write' });
+      // A miss creates the record: the local flag rides the write and is kept locally.
+      expect(decideIdentityBind({ ...base, hasExplicitChoice: true })).toEqual(
+        write({ carryCcpa: true, restoreLocalCcpa: true }),
+      );
+      // A found signal-only re-sync with the gate off: the record's flag is left as it is.
       expect(
         decideIdentityBind({
           ...base,
@@ -1682,7 +1701,43 @@ describe('ConsentManager — Universal Consent', () => {
           isResync: true,
           hasExplicitChoice: true,
         }),
-      ).toEqual({ kind: 'write' });
+      ).toEqual(write({}));
+    });
+
+    it('re-sync write over a found signal-only record: the CCPA side (TRUST-3391)', () => {
+      const signalOnlyResync = {
+        ...base,
+        recordFound: true,
+        isResync: true,
+        hasExplicitChoice: true,
+        syncOptout: true,
+        recordCcpaOptout: true,
+      };
+      // Gate on, nothing pending: the record's flag is adopted, never sent on the category write.
+      expect(decideIdentityBind(signalOnlyResync)).toEqual(write({ adoptCcpaFromRecord: true }));
+      expect(decideIdentityBind({ ...signalOnlyResync, recordCcpaOptout: null })).toEqual(
+        write({ adoptCcpaFromRecord: false }),
+      );
+      // A pending choice is kept and flushed on its own, not adopted over.
+      expect(decideIdentityBind({ ...signalOnlyResync, ccpaPendingSync: true })).toEqual(
+        write({ restoreLocalCcpa: true, flushPendingCcpa: true }),
+      );
+      // A choice made during the read is newer than the record: not adopted over.
+      expect(decideIdentityBind({ ...signalOnlyResync, ccpaSetDuringRead: true })).toEqual(
+        write({}),
+      );
+      // A found record WITH usable prefs: the read already adopted its flag, so nothing here.
+      expect(
+        decideIdentityBind({
+          ...signalOnlyResync,
+          hasUsablePrefs: true,
+          localIsNewerThanRecord: true,
+        }),
+      ).toEqual(write({}));
+      // A re-sync miss with a pending choice: flushed on its own, never carried by the write.
+      expect(
+        decideIdentityBind({ ...signalOnlyResync, recordFound: false, ccpaPendingSync: true }),
+      ).toEqual(write({ restoreLocalCcpa: true, flushPendingCcpa: true }));
     });
   });
 
@@ -2070,6 +2125,64 @@ describe('ConsentManager — Universal Consent', () => {
 
         reset();
         expect(deviceStorage().loadCcpaDecisionTs()).toBeNull();
+      });
+
+      it("a category choice after this device's own CCPA write is stamped after it, so a re-sync writes it", async () => {
+        // The device adopts record R (decided at T0) at T0, so its category time is R.
+        mockFetchSequence(gatedConfig(), response(200, ''));
+        await initUniversal();
+        stubUcFetch(recordAt(T0, true));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadDecisionTs()).toBe(T0);
+
+        // In the same second the user opts out of sale here: that write is stamped R + 1 and moves
+        // the record's updated_at to R + 1.
+        stubUcFetch();
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0 + 1);
+
+        // ...then revokes everything. Floored on the previous category time alone this would be
+        // R + 1, a tie with the record, which the next re-sync would adopt over the revocation.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 2);
+
+        const fetchMock = stubUcFetch(
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: {
+                'dg-category-essential': true,
+                'dg-category-marketing': true,
+                'dg-category-performance': true,
+                'dg-category-functional': true,
+              },
+            },
+            ccpa_optout: true,
+            updated_at: iso(T0 + 1),
+          }),
+        );
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        const body = JSON.parse((posts[0][1] as { body: string }).body);
+        expect(body.decision_ts).toBe(T0 + 2);
+        expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      });
+
+      it('a category choice is stamped after the latest record read here', async () => {
+        // A clock running behind: the signal-only record read here was decided at T0+200 by its
+        // clock. The re-sync writes the local choice through and keeps its own time (T0-100).
+        await boundDeviceWithChoiceAt(T0 - 100, true, gatedConfig());
+        setNow(T0);
+        stubUcFetch(found({ consent_preferences: null, updated_at: iso(T0 + 200) }));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 - 100);
+
+        await rejectAll();
+
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 201);
       });
     });
   });
