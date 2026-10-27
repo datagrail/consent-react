@@ -16,7 +16,7 @@ import { ConsentResolver } from './consent/ConsentResolver';
 import { ConsentEventEmitter } from './consent/EventEmitter';
 import { UniversalConsentService } from './universal/UniversalConsentService';
 import { booleanEntries, reconcileSignals } from './universal/types';
-import { recordDecisionTs } from './universal/decisionTs';
+import { nowSeconds, recordDecisionTs } from './universal/decisionTs';
 import type {
   SignatureProvider,
   UniversalConsentPreferences,
@@ -318,6 +318,9 @@ export function clearUserIdentifier(): void {
     return;
   }
   storageService.clearBoundUserHash();
+  // The logged-out identity's record times must not floor the next visitor's category stamps
+  // (TRUST-3225). The device-wide CCPA floor stays, by design.
+  storageService.clearUcDecisionFloor();
   // The CCPA opt-out belongs to the logged-out user too (TRUST-2591). returnToNeutral() clears it
   // as part of the choice; this also covers a call before initialize().
   storageService.clearCcpaOptout();
@@ -476,6 +479,10 @@ async function sendCcpaOptout(send: {
   }
   const categoriesDecidedAt = storageService!.loadDecisionTs();
   if (send.withCategories && categoriesDecidedAt !== null) {
+    // Every write this device sends raises the bound identity's floor before it is sent, so a
+    // category choice made in the same second (even while the write is in flight) is stamped after
+    // the updated_at the write gives the record (TRUST-3225).
+    storageService!.raiseUcDecisionFloor(categoriesDecidedAt);
     await universalConsentService!.save(
       currentConfig!,
       send.identifier,
@@ -490,6 +497,10 @@ async function sendCcpaOptout(send: {
     if (!opIsCurrent(send.op)) {
       return 'not-sent';
     }
+  }
+  if (currentConfig!.universalConsent?.syncOptout === true) {
+    // Sent only under the gate (saveCcpaOptout sends nothing otherwise).
+    storageService!.raiseUcDecisionFloor(send.decidedAt);
   }
   const result = await universalConsentService!.saveCcpaOptout(
     currentConfig!,
@@ -562,6 +573,7 @@ async function settleStaleCcpaOptout(send: {
   const readRecordTs = recordDecisionTs(record.updatedAt);
   if (readRecordTs !== null) {
     storageService!.raiseCcpaDecisionFloor(readRecordTs);
+    storageService!.raiseUcDecisionFloor(readRecordTs);
   }
   if (ccpaChoiceSeq === seq && !storageService!.hasPendingCcpaOptoutSync()) {
     storageService!.saveCcpaOptout(record.ccpaOptout === true);
@@ -1150,6 +1162,16 @@ export async function setUserIdentifier(
   if (identityChanged) {
     return;
   }
+  // The category-stamp floor belongs to the identity whose record was just read (TRUST-3225). A
+  // LOGIN replaces it (the read already replaced local state with this identity's), so a previous
+  // identity's record times never push this one's stamps ahead; a re-sync raises it.
+  if (isResync) {
+    if (remoteDecisionTs !== null) {
+      storageService!.raiseUcDecisionFloor(remoteDecisionTs);
+    }
+  } else {
+    storageService!.resetUcDecisionFloor(remoteDecisionTs);
+  }
   // A setCcpaOptout call made while the read was in flight is newer than both the value captured
   // above and the record: the read kept it, and it is the user's flag from here on, on a login as
   // on a re-sync. On a re-sync its pending-sync marker is whatever the call left; a login starts
@@ -1233,6 +1255,12 @@ export async function setUserIdentifier(
       );
     }
 
+    // The TRUE time of the local choice (TRUST-3225). Unknown (a choice stored before decision
+    // times were recorded) is dated now, which is what the edge would default it to, but decided
+    // here so the floor below holds the exact decision_ts the write gives the record: a category
+    // choice in the same second is then stamped after it, not tied with it and adopted over.
+    const writeDecisionTs = localDecisionTs ?? nowSeconds();
+    storageService!.raiseUcDecisionFloor(writeDecisionTs);
     await universalConsentService!.save(
       currentConfig!,
       identifier,
@@ -1244,8 +1272,7 @@ export async function setUserIdentifier(
       // pending choice, which is flushed on its own below.
       ccpaOnWrite,
       getSignature,
-      // The TRUE time of the local choice (TRUST-3225); unknown falls back to the request time.
-      localDecisionTs,
+      writeDecisionTs,
     );
     // Logged out (or reset) while the write was in flight: nothing more is sent or changed, and the
     // device stays unbound. Checked before `currentConfig`, which reset() nulls.

@@ -3,7 +3,11 @@ import { MMKV } from 'react-native-mmkv';
 import type { ConsentPreferences, ConsentConfig } from '../types';
 import { STORAGE_KEYS, CURRENT_SCHEMA_VERSION } from './keys';
 import { runMigrations } from './migrations';
-import { DECISION_TS_STORED_TOLERANCE_SECONDS, nowSeconds } from '../universal/decisionTs';
+import {
+  DECISION_TS_FUTURE_TOLERANCE_SECONDS,
+  DECISION_TS_STORED_TOLERANCE_SECONDS,
+  nowSeconds,
+} from '../universal/decisionTs';
 import { booleanEntries } from '../universal/types';
 
 /**
@@ -113,12 +117,13 @@ export class StorageService {
    * Record WHEN the stored choice was made, as unix seconds (TRUST-3225). With no argument it is a
    * choice made now. A Universal Consent adopt passes the adopted record's time instead.
    *
-   * The default is MONOTONIC: never earlier than the latest of the previous stamp, this device's
-   * last CCPA decision time and any record updated_at read here, + 1 (capped so it always reads
-   * back). So two choices in the same second, a choice made right after adopting a record stamped
-   * slightly ahead of this clock, or one made right after this device's own CCPA write (which moves
-   * the record's updated_at to that write's time) still order after the record and are not lost to a
-   * same-second tie on the next re-sync. This is the only clock-skew protection.
+   * The default is MONOTONIC: never earlier than the latest of the previous stamp and the bound
+   * identity's record floor (raiseUcDecisionFloor: its updated_at read here and the decision_ts of
+   * every write sent for it), + 1 (capped so it always reads back). So two choices in the same
+   * second, a choice made right after adopting a record stamped slightly ahead of this clock, or one
+   * made right after any write from this device (which moves the record's updated_at to that write's
+   * time, even one sent with an unknown local time) still order after the record and are not lost to
+   * a same-second tie on the next re-sync. This is the only clock-skew protection.
    * Times from different devices are compared as-is, so skew (up to the edge's ~300 s clamp) can
    * still mis-order changes made within that window of each other.
    */
@@ -127,9 +132,9 @@ export class StorageService {
       this.storage.set(STORAGE_KEYS.DECISION_TS, decisionTs);
       return;
     }
-    // CCPA_DECISION_TS holds both this device's last CCPA decision time and the latest record
-    // updated_at read here (raiseCcpaDecisionFloor), so it floors the category stamp too.
-    this.stampMonotonic(STORAGE_KEYS.DECISION_TS, [STORAGE_KEYS.CCPA_DECISION_TS]);
+    // Floored on the identity-scoped record floor, not CCPA_DECISION_TS: that one survives logout,
+    // and a previous identity's record times must not push this identity's stamps ahead.
+    this.stampMonotonic(STORAGE_KEYS.DECISION_TS, [STORAGE_KEYS.UC_DECISION_FLOOR_TS]);
   }
 
   /**
@@ -238,9 +243,47 @@ export class StorageService {
    * choice made after reading it is stamped after every register it holds. Never lowers the floor.
    */
   raiseCcpaDecisionFloor(recordTs: number): void {
-    const floor = this.loadCcpaDecisionTs();
-    if (floor === null || recordTs > floor) {
-      this.storage.set(STORAGE_KEYS.CCPA_DECISION_TS, recordTs);
+    this.raiseFloor(STORAGE_KEYS.CCPA_DECISION_TS, recordTs);
+  }
+
+  /**
+   * The bound (or binding) identity's record is known to hold a decision at `ts`: its updated_at was
+   * read here, or this device sent it a write with that decision_ts. Raise the category-stamp floor
+   * to it, capped at the edge's future clamp (the edge stores no later time), so the next category
+   * choice is stamped after it (TRUST-3225). Never lowers the floor.
+   */
+  raiseUcDecisionFloor(ts: number): void {
+    this.raiseFloor(
+      STORAGE_KEYS.UC_DECISION_FLOOR_TS,
+      Math.min(ts, nowSeconds() + DECISION_TS_FUTURE_TOLERANCE_SECONDS),
+    );
+  }
+
+  /**
+   * A LOGIN read the new identity's record (`recordTs`, or `null` for a miss or unknown time): the
+   * floor is that record's alone from here on, never the previous identity's.
+   */
+  resetUcDecisionFloor(recordTs: number | null): void {
+    this.clearUcDecisionFloor();
+    if (recordTs !== null) {
+      this.raiseUcDecisionFloor(recordTs);
+    }
+  }
+
+  /** Logout: no identity's record floors the next category choice. */
+  clearUcDecisionFloor(): void {
+    this.storage.delete(STORAGE_KEYS.UC_DECISION_FLOOR_TS);
+  }
+
+  /** The bound identity's category-stamp floor, or `null` when none is stored or it is bogus. */
+  loadUcDecisionFloor(): number | null {
+    return this.loadStoredTs(STORAGE_KEYS.UC_DECISION_FLOOR_TS);
+  }
+
+  private raiseFloor(key: string, ts: number): void {
+    const floor = this.loadStoredTs(key);
+    if (floor === null || ts > floor) {
+      this.storage.set(key, ts);
     }
   }
 

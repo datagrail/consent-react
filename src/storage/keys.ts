@@ -34,6 +34,16 @@ export const STORAGE_KEYS = {
   // (or two choices in one second) cannot lose at the edge to an older decision (TRUST-3225).
   // Monotonic per device: logout and the neutral reset keep it; only reset() (clearAll) wipes it.
   CCPA_DECISION_TS: 'datagrail_consent_ccpa_decision_ts',
+  // The latest decision time known to be on the Universal Consent record of the identity this device
+  // is (or is becoming) bound to, as unix seconds: that record's updated_at as read here, and the
+  // decision_ts of every write this device sent for it, capped at the edge's future clamp. Only a
+  // floor: the next category choice is stamped strictly after it, so a choice made in the same
+  // second as a write or read here never ties the record's updated_at and loses to it on the next
+  // re-sync (TRUST-3225). Scoped to that identity, unlike CCPA_DECISION_TS: a login replaces it with
+  // the new record's time, and clearUserIdentifier and reset() (clearAll) wipe it, so one identity's
+  // record times never floor the next identity's category stamps.
+  // React Native only: no native key to match.
+  UC_DECISION_FLOOR_TS: 'datagrail_consent_uc_decision_floor_ts',
   // WHEN the stored consent choice was made, as unix seconds (TRUST-3225, the React Native port of
   // TRUST-3154). Stamped by every real choice (savePreferences/acceptAll/rejectAll, the banner, the
   // ATT prompt), overwritten with the record's time by a Universal Consent adopt, and cleared with
