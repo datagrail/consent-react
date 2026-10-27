@@ -2278,11 +2278,13 @@ describe('ConsentManager — Universal Consent', () => {
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
       });
 
-      it('a re-sync flush the record outranks adopts the record flag', async () => {
+      it('a re-sync flush the record outranks re-reads the record and adopts the winning flag', async () => {
+        // The pre-write read saw `false`; another device opted out before the flush landed. The stale
+        // answer means that newer value won, so it is read again rather than the earlier read reused.
         const fetchMock = await initThenStub(
           configWithGate(true),
           response(200, ''), // save_preferences
-          found({ ccpa_optout: true, updated_at: '2099-01-01T00:00:00Z' }),
+          found({ ccpa_optout: false, updated_at: '2099-01-01T00:00:00Z' }),
           response(
             200,
             JSON.stringify({
@@ -2292,6 +2294,7 @@ describe('ConsentManager — Universal Consent', () => {
               stale_fields: ['ccpa_optout'],
             }),
           ),
+          found({ ccpa_optout: true, updated_at: '2099-01-01T00:00:05Z' }), // read back
         );
         await savePreferences(explicitChoice(true));
         bindDeviceTo(USER_HASH);
@@ -2300,8 +2303,153 @@ describe('ConsentManager — Universal Consent', () => {
         await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
 
         expect(postBody(ucPosts(fetchMock)[0]).ccpa_optout).toBe(false);
+        expect(fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1]).toMatchObject({
+          method: 'GET',
+        });
         expect(getCcpaOptout()).toBe(true);
         expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a stale CCPA write whose read-back finds no record keeps the local choice, pending', async () => {
+        await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          response(200, ''), // categories
+          response(
+            200,
+            JSON.stringify({
+              status: 'ok',
+              stale: true,
+              stale_categories: [],
+              stale_fields: ['ccpa_optout'],
+            }),
+          ),
+          notFound(), // read back: the record was erased meanwhile
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+        expect(getCcpaOptout()).toBe(true);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(true);
+      });
+
+      it('a logout while the CCPA write is in flight settles nothing on the logged-out device', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          response(200, ''), // categories
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        fetchMock.mockImplementationOnce(async () => {
+          clearUserIdentifier();
+          return response(
+            200,
+            JSON.stringify({
+              status: 'ok',
+              stale: true,
+              stale_categories: [],
+              stale_fields: ['ccpa_optout'],
+            }),
+          );
+        });
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+
+        // No read-back, and the old user's flag never lands on the neutral device.
+        expect(
+          fetchMock.mock.calls.filter((c) => (c[1] as { method: string }).method === 'GET'),
+        ).toHaveLength(0);
+        expect(getCcpaOptout()).toBe(false);
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a logout during the category write stops setCcpaOptout before its CCPA write', async () => {
+        const fetchMock = await initThenStub(configWithGate(true), response(200, '')); // save_preferences
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        fetchMock.mockImplementationOnce(async () => {
+          clearUserIdentifier();
+          return response(200, '');
+        });
+
+        await expect(
+          setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature }),
+        ).resolves.toBe(false);
+        // The category write only; no CCPA-only write after the logout.
+        expect(ucPosts(fetchMock)).toHaveLength(1);
+        expect(getCcpaOptout()).toBe(false);
+      });
+
+      it('reset() during a re-sync write resolves quietly, with no flush and no bind', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          notFound(),
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true); // pending, no sync
+        fetchMock.mockImplementationOnce(async () => {
+          reset();
+          return response(200, '');
+        });
+
+        await expect(
+          setUserIdentifier(ID, { apiKey: API_KEY, getSignature }),
+        ).resolves.toBeUndefined();
+        expect(ucPosts(fetchMock)).toHaveLength(1);
+        expect(deviceStorage().loadBoundUserHash()).toBeNull();
+      });
+
+      it('a re-sync miss sends a pending choice as its own CCPA-only write at its own time', async () => {
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          notFound(),
+        );
+        await savePreferences(explicitChoice(true));
+        const categoriesAt = deviceStorage().loadDecisionTs();
+        bindDeviceTo(USER_HASH);
+        await setCcpaOptout(true); // pending, no sync
+        const pendingSince = deviceStorage().loadCcpaOptoutPendingSince();
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock).map(postBody);
+        expect(posts).toHaveLength(2);
+        // The category write (creating the record) leaves the pending flag out...
+        expect(posts[0].ccpa_optout).toBeUndefined();
+        expect(posts[0].decision_ts).toBe(categoriesAt);
+        // ...and the CCPA-only write carries it, dated when it was made.
+        expect(posts[1]).toMatchObject({ ccpa_optout: true, decision_ts: pendingSince });
+        expect(posts[1].consent_preferences).toEqual({ cookieOptions: {} });
+        expect(deviceStorage().hasPendingCcpaOptoutSync()).toBe(false);
+      });
+
+      it('a re-sync write over a found signal-only record adopts its ccpa_optout locally', async () => {
+        // The user opted out on the web (a signal-only record); this bound device has an explicit
+        // category choice and no pending CCPA choice, so it writes its categories and takes the flag.
+        const fetchMock = await initThenStub(
+          configWithGate(true),
+          response(200, ''), // save_preferences
+          found({ consent_preferences: null, ccpa_optout: true }),
+        );
+        await savePreferences(explicitChoice(true));
+        bindDeviceTo(USER_HASH);
+        expect(getCcpaOptout()).toBe(false);
+
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock).map(postBody);
+        expect(posts).toHaveLength(1);
+        expect(posts[0].ccpa_optout).toBeUndefined();
+        expect(getCcpaOptout()).toBe(true);
       });
 
       it('the ATT save keeps an adopted raw choice unchanged: the tracking status stays device-local', async () => {

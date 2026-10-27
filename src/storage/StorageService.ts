@@ -124,13 +124,7 @@ export class StorageService {
       this.storage.set(STORAGE_KEYS.DECISION_TS, decisionTs);
       return;
     }
-    const now = nowSeconds();
-    const previous = this.loadDecisionTs();
-    const monotonic =
-      previous !== null
-        ? Math.min(Math.max(now, previous + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
-        : now;
-    this.storage.set(STORAGE_KEYS.DECISION_TS, monotonic);
+    this.stampMonotonic(STORAGE_KEYS.DECISION_TS);
   }
 
   /**
@@ -140,11 +134,35 @@ export class StorageService {
    * clock was ahead and has since been corrected) and would otherwise out-rank every record forever.
    */
   loadDecisionTs(): number | null {
-    const value = this.storage.getNumber(STORAGE_KEYS.DECISION_TS);
+    return this.loadStoredTs(STORAGE_KEYS.DECISION_TS);
+  }
+
+  /**
+   * The one clock-skew rule for every stored decision time (the category choice's, the CCPA floor,
+   * the pending CCPA choice's): `null` unless it is a non-negative safe integer no more than
+   * DECISION_TS_STORED_TOLERANCE_SECONDS ahead of this clock.
+   */
+  private loadStoredTs(key: string): number | null {
+    const value = this.storage.getNumber(key);
     if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
       return null;
     }
     return value <= nowSeconds() + DECISION_TS_STORED_TOLERANCE_SECONDS ? value : null;
+  }
+
+  /**
+   * Store a decision made now under `key` and return it: MONOTONIC, never earlier than the previous
+   * valid stamp + 1, and capped so it always reads back through loadStoredTs.
+   */
+  private stampMonotonic(key: string): number {
+    const now = nowSeconds();
+    const previous = this.loadStoredTs(key);
+    const stamp =
+      previous !== null
+        ? Math.min(Math.max(now, previous + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
+        : now;
+    this.storage.set(key, stamp);
+    return stamp;
   }
 
   /** The stored choice is no longer one anyone made at a known time. */
@@ -170,15 +188,10 @@ export class StorageService {
 
   /**
    * When the pending setCcpaOptout choice was made (unix seconds), or `null` when none is pending.
-   * A legacy boolean marker reads as pending at time 0: it holds the flag but never outranks a
-   * dated choice.
+   * Validated like loadDecisionTs, so a bad stored value never goes on the wire as `decision_ts`.
    */
   loadCcpaOptoutPendingSince(): number | null {
-    const since = this.storage.getNumber(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
-    if (since !== undefined) {
-      return since;
-    }
-    return this.storage.getBoolean(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC) === true ? 0 : null;
+    return this.loadStoredTs(STORAGE_KEYS.CCPA_OPTOUT_PENDING_SYNC);
   }
 
   /** Whether the stored CCPA flag is a setCcpaOptout choice that has not reached the record yet. */
@@ -211,14 +224,7 @@ export class StorageService {
    * ahead (a since-corrected clock) is ignored rather than followed into the future.
    */
   stampCcpaDecision(): number {
-    const now = nowSeconds();
-    const floor = this.loadCcpaDecisionTs();
-    const stamp =
-      floor !== null
-        ? Math.min(Math.max(now, floor + 1), now + DECISION_TS_STORED_TOLERANCE_SECONDS)
-        : now;
-    this.storage.set(STORAGE_KEYS.CCPA_DECISION_TS, stamp);
-    return stamp;
+    return this.stampMonotonic(STORAGE_KEYS.CCPA_DECISION_TS);
   }
 
   /**
@@ -238,11 +244,7 @@ export class StorageService {
    * loadDecisionTs).
    */
   loadCcpaDecisionTs(): number | null {
-    const value = this.storage.getNumber(STORAGE_KEYS.CCPA_DECISION_TS);
-    if (value === undefined || !Number.isSafeInteger(value) || value < 0) {
-      return null;
-    }
-    return value <= nowSeconds() + DECISION_TS_STORED_TOLERANCE_SECONDS ? value : null;
+    return this.loadStoredTs(STORAGE_KEYS.CCPA_DECISION_TS);
   }
 
   /** The stored CCPA opt-out choice; `false` ("not opted out") when none is stored. */
