@@ -524,7 +524,10 @@ describe('UniversalConsentService', () => {
           return USER_HASH;
         });
         const hooked = new UniversalConsentService(new NetworkService(), {
-          onBeforeWrite: (ts) => seen.push([ts, fetchMock.mock.calls.length]),
+          onBeforeWrite: (ts, identifier) => {
+            expect(identifier).toBe('uc-user-7f3a9c');
+            seen.push([ts, fetchMock.mock.calls.length]);
+          },
         });
         config.universalConsent = { enabled: true, syncOptout: true };
 

@@ -74,9 +74,10 @@ export interface UniversalConsentServiceOptions {
    * Called synchronously with the exact `decision_ts` of every write, once it is certain to be sent
    * and before its first await (TRUST-3225). The one place the record's coming `updated_at` is
    * known, so a caller that must order later choices after it hooks here rather than re-deriving
-   * the syncOptout gate and the request-time fallback at each call site.
+   * the syncOptout gate and the request-time fallback at each call site. `identifier` is the raw
+   * identifier the write is for, so a caller can tell whose record the time belongs to.
    */
-  onBeforeWrite?: (decisionTs: number) => void;
+  onBeforeWrite?: (decisionTs: number, identifier: string) => void;
 }
 
 /** What a sent write resolved to. */
@@ -320,7 +321,7 @@ export class UniversalConsentService {
     const effectiveDecisionTs = decisionTs ?? timestamp;
     // Before the first await, so a choice made while this write is in flight is already ordered
     // after the updated_at it gives the record.
-    this.options.onBeforeWrite?.(effectiveDecisionTs);
+    this.options.onBeforeWrite?.(effectiveDecisionTs, identifier);
 
     const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
 
