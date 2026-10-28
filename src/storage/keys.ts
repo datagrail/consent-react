@@ -32,16 +32,20 @@ export const STORAGE_KEYS = {
   // choice, or the updated_at of a Universal Consent record it read, whichever is later. Only a
   // floor: the next setCcpaOptout choice is stamped strictly after it, so a clock running behind
   // (or two choices in one second) cannot lose at the edge to an older decision (TRUST-3225).
-  // Monotonic per device: logout and the neutral reset keep it; only reset() (clearAll) wipes it.
+  // Monotonic per device: logout and the neutral reset keep it; a login caps it at the current time
+  // (dropping a previous identity's record time read from a clock running ahead) before raising it
+  // to the new identity's record; only reset() (clearAll) wipes it.
   CCPA_DECISION_TS: 'datagrail_consent_ccpa_decision_ts',
   // The latest decision time known to be on the Universal Consent record of the identity this device
-  // is (or is becoming) bound to, as unix seconds: that record's updated_at as read here, and the
-  // decision_ts of every write this device sent for it, capped at the edge's future clamp. Only a
-  // floor: the next category choice is stamped strictly after it, so a choice made in the same
-  // second as a write or read here never ties the record's updated_at and loses to it on the next
-  // re-sync (TRUST-3225). Scoped to that identity, unlike CCPA_DECISION_TS: a login replaces it with
-  // the new record's time, and clearUserIdentifier and reset() (clearAll) wipe it, so one identity's
-  // record times never floor the next identity's category stamps.
+  // is bound to, as unix seconds: that record's updated_at as read here, and the decision_ts of every
+  // write this device sent for it, capped at the edge's future clamp. Only a floor: the next category
+  // choice is stamped strictly after it, so a choice made in the same second as a write or read here
+  // never ties the record's updated_at and loses to it on the next re-sync (TRUST-3225). Scoped to
+  // that identity, unlike CCPA_DECISION_TS: while a login is in flight it is only raised (by the new
+  // identity's read and write), and once the bind succeeds it is replaced with the new identity's
+  // times alone; clearUserIdentifier and reset() (clearAll) wipe it. So one identity's record times
+  // never floor the next identity's category stamps, and a failed login never lowers the floor of
+  // the identity still bound.
   // React Native only: no native key to match.
   UC_DECISION_FLOOR_TS: 'datagrail_consent_uc_decision_floor_ts',
   // WHEN the stored consent choice was made, as unix seconds (TRUST-3225, the React Native port of

@@ -1825,6 +1825,19 @@ describe('ConsentManager — Universal Consent', () => {
       return mock;
     }
 
+    /** The Universal Consent config with the syncOptout gate on. */
+    const gatedConfig = () => {
+      const parsed = JSON.parse(universalConfigJson);
+      return JSON.stringify({
+        ...parsed,
+        universalConsent: { ...parsed.universalConsent, sync_optout: true },
+      });
+    };
+    const ccpaWrites = (mock: jest.Mock) =>
+      ucPosts(mock)
+        .map((call) => JSON.parse((call[1] as { body: string }).body))
+        .filter((body) => body.ccpa_optout !== undefined);
+
     beforeEach(() => {
       nowSpy = jest.spyOn(Date, 'now');
       setNow(T0);
@@ -2050,18 +2063,6 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     describe('the CCPA decision time is monotonic per device', () => {
-      const gatedConfig = () => {
-        const parsed = JSON.parse(universalConfigJson);
-        return JSON.stringify({
-          ...parsed,
-          universalConsent: { ...parsed.universalConsent, sync_optout: true },
-        });
-      };
-      const ccpaWrites = (mock: jest.Mock) =>
-        ucPosts(mock)
-          .map((call) => JSON.parse((call[1] as { body: string }).body))
-          .filter((body) => body.ccpa_optout !== undefined);
-
       it('a clock running behind still dates a choice after the adopted record and the last choice', async () => {
         // This device's clock is 200 s behind: the record it re-syncs was decided at T0+200 by its
         // clock, T0+150 being the opt-out made on another device just before.
@@ -2226,10 +2227,8 @@ describe('ConsentManager — Universal Consent', () => {
         await boundDeviceWithChoiceAt(T0, true);
         stubUcFetch(found({ consent_preferences: null, updated_at: iso(T0 + 250) }));
         await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
-        expect(deviceStorage().loadUcDecisionFloor()).toBe(T0 + 250);
 
         clearUserIdentifier();
-        expect(deviceStorage().loadUcDecisionFloor()).toBeNull();
         expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0 + 250);
 
         // The next visitor's choice is dated by this clock, not pushed past the previous user's record.
@@ -2246,18 +2245,77 @@ describe('ConsentManager — Universal Consent', () => {
 
         stubUcFetch(recordAt(T0 - 50, true));
         await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
-        expect(deviceStorage().loadUcDecisionFloor()).toBe(T0 - 50);
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 - 50);
 
         await rejectAll();
         expect(deviceStorage().loadDecisionTs()).toBe(T0);
       });
 
-      it("the floor never exceeds the edge's future clamp, which is the latest time a record can hold", () => {
+      it("a login that fails before the bind keeps the still-bound identity's floor", async () => {
+        // Bound to A, whose record this device knows to hold a decision at T0; the local choice is
+        // older than that.
+        setNow(T0 - 100);
+        bindDeviceTo('d'.repeat(64));
+        mockFetchSequence(universalConfigJson, response(200, ''));
+        await initUniversal();
+        await savePreferences(explicitChoice(true));
+        setNow(T0);
+        deviceStorage().raiseUcDecisionFloor(T0);
+
+        // The host logs B in without logging A out. B's record (decided at T0-50) is read and
+        // adopted, then a host listener throws before the bind: the device stays bound to A.
+        const unsubscribe = onConsentChanged(() => {
+          throw new Error('host listener failed');
+        });
+        stubUcFetch(recordAt(T0 - 50, true));
+        await expect(setUserIdentifier(ID, { apiKey: API_KEY, getSignature })).rejects.toThrow(
+          'host listener failed',
+        );
+        unsubscribe();
+        expect(deviceStorage().loadBoundUserHash()).toBe('d'.repeat(64));
+
+        // A revocation in the same second as A's record is still stamped after it, not tied with
+        // it (B's lower floor must not have replaced A's).
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 1);
+      });
+
+      it("a previous identity's record time does not reach the new identity's stamps through a CCPA write", async () => {
+        // A's record was read off a clock 250 s ahead; the device-wide CCPA floor holds that time.
+        setNow(T0 - 100);
+        bindDeviceTo('d'.repeat(64));
+        mockFetchSequence(gatedConfig(), response(200, ''));
+        await initUniversal();
+        setNow(T0);
+        deviceStorage().raiseCcpaDecisionFloor(T0 + 250);
+        clearUserIdentifier();
+
+        // B logs in and adopts its record (decided at T0-50)...
+        stubUcFetch(recordAt(T0 - 50, true));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        // ...then opts out of sale: dated by this clock (just after the floor, now capped at now),
+        // not pushed past A's record (T0+251).
+        const fetchMock = stubUcFetch();
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        expect(ccpaWrites(fetchMock).map((body) => body.decision_ts)).toEqual([T0 + 1]);
+
+        // ...so B's next category choice, floored on that write, is not pushed ~250 s ahead either.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 2);
+      });
+
+      it("the floor never exceeds the edge's future clamp, which is the latest time a record can hold", async () => {
+        await boundDeviceWithChoiceAt(T0 - 100, true);
+        setNow(T0);
         deviceStorage().raiseUcDecisionFloor(T0 + 500);
-        expect(deviceStorage().loadUcDecisionFloor()).toBe(T0 + 300);
         // ...and never lowers.
         deviceStorage().raiseUcDecisionFloor(T0 + 10);
-        expect(deviceStorage().loadUcDecisionFloor()).toBe(T0 + 300);
+
+        // Floored on T0+300 (the clamp), not T0+500.
+        setNow(T0 + 250);
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 301);
       });
     });
   });

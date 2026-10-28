@@ -260,13 +260,15 @@ export class StorageService {
   }
 
   /**
-   * A LOGIN read the new identity's record (`recordTs`, or `null` for a miss or unknown time): the
-   * floor is that record's alone from here on, never the previous identity's.
+   * A LOGIN bound the device to a new identity, whose record is known to hold a decision at `ts`
+   * (the later of its updated_at read and the decision_ts written to it, or `null` for neither):
+   * the floor is that identity's alone from here on, never the previous identity's. Only called
+   * once the bind succeeded, so a failed login leaves the still-bound identity's floor in place.
    */
-  resetUcDecisionFloor(recordTs: number | null): void {
+  resetUcDecisionFloor(ts: number | null): void {
     this.clearUcDecisionFloor();
-    if (recordTs !== null) {
-      this.raiseUcDecisionFloor(recordTs);
+    if (ts !== null) {
+      this.raiseUcDecisionFloor(ts);
     }
   }
 
@@ -275,9 +277,22 @@ export class StorageService {
     this.storage.delete(STORAGE_KEYS.UC_DECISION_FLOOR_TS);
   }
 
-  /** The bound identity's category-stamp floor, or `null` when none is stored or it is bogus. */
-  loadUcDecisionFloor(): number | null {
-    return this.loadStoredTs(STORAGE_KEYS.UC_DECISION_FLOOR_TS);
+  /**
+   * A LOGIN bound the device to a new identity whose record was last decided at `recordTs` (`null`
+   * for a miss or unknown time). The CCPA floor stays device-wide, but whatever part of it lies
+   * ahead of this clock can only be a record time read for a previous identity (another device's
+   * clock), so it is capped at now before being raised to the new record's (TRUST-3225). Otherwise
+   * the new identity's first CCPA choice would be stamped up to the edge's clamp ahead of real time,
+   * and that write would push its category stamps ahead with it.
+   */
+  rebaseCcpaDecisionFloor(recordTs: number | null): void {
+    const floor = this.loadStoredTs(STORAGE_KEYS.CCPA_DECISION_TS);
+    if (floor !== null && floor > nowSeconds()) {
+      this.storage.set(STORAGE_KEYS.CCPA_DECISION_TS, nowSeconds());
+    }
+    if (recordTs !== null) {
+      this.raiseCcpaDecisionFloor(recordTs);
+    }
   }
 
   private raiseFloor(key: string, ts: number): void {

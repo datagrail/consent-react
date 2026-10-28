@@ -16,7 +16,7 @@ import { ConsentResolver } from './consent/ConsentResolver';
 import { ConsentEventEmitter } from './consent/EventEmitter';
 import { UniversalConsentService } from './universal/UniversalConsentService';
 import { booleanEntries, reconcileSignals } from './universal/types';
-import { nowSeconds, recordDecisionTs } from './universal/decisionTs';
+import { recordDecisionTs } from './universal/decisionTs';
 import type {
   SignatureProvider,
   UniversalConsentPreferences,
@@ -69,7 +69,14 @@ export async function initialize(config: DataGrailConfig): Promise<void> {
     storageService,
     config.onConfigError ? { onConfigError: config.onConfigError } : {},
   );
-  universalConsentService = new UniversalConsentService(networkService);
+  // Every Universal Consent write raises the bound identity's category-stamp floor to the exact
+  // decision_ts it sends, before it is sent (TRUST-3225): the write moves the record's updated_at
+  // there, so a category choice made in the same second (even while the write is in flight) must be
+  // stamped after it, or the next re-sync would tie and adopt the record over it. Hooked into the
+  // service's one send path so no write caller can forget it or derive a different time.
+  universalConsentService = new UniversalConsentService(networkService, {
+    onBeforeWrite: (decisionTs) => storageService?.raiseUcDecisionFloor(decisionTs),
+  });
   currentConfig = await configService.fetchConfig(config.configUrl);
 
   // 5. Load/resolve consent state (store version for future comparisons)
@@ -479,10 +486,6 @@ async function sendCcpaOptout(send: {
   }
   const categoriesDecidedAt = storageService!.loadDecisionTs();
   if (send.withCategories && categoriesDecidedAt !== null) {
-    // Every write this device sends raises the bound identity's floor before it is sent, so a
-    // category choice made in the same second (even while the write is in flight) is stamped after
-    // the updated_at the write gives the record (TRUST-3225).
-    storageService!.raiseUcDecisionFloor(categoriesDecidedAt);
     await universalConsentService!.save(
       currentConfig!,
       send.identifier,
@@ -497,10 +500,6 @@ async function sendCcpaOptout(send: {
     if (!opIsCurrent(send.op)) {
       return 'not-sent';
     }
-  }
-  if (currentConfig!.universalConsent?.syncOptout === true) {
-    // Sent only under the gate (saveCcpaOptout sends nothing otherwise).
-    storageService!.raiseUcDecisionFloor(send.decidedAt);
   }
   const result = await universalConsentService!.saveCcpaOptout(
     currentConfig!,
@@ -1162,15 +1161,12 @@ export async function setUserIdentifier(
   if (identityChanged) {
     return;
   }
-  // The category-stamp floor belongs to the identity whose record was just read (TRUST-3225). A
-  // LOGIN replaces it (the read already replaced local state with this identity's), so a previous
-  // identity's record times never push this one's stamps ahead; a re-sync raises it.
-  if (isResync) {
-    if (remoteDecisionTs !== null) {
-      storageService!.raiseUcDecisionFloor(remoteDecisionTs);
-    }
-  } else {
-    storageService!.resetUcDecisionFloor(remoteDecisionTs);
+  // A category choice made from here on must be stamped after the record just read (TRUST-3225).
+  // Only raised, on a LOGIN too: the device stays bound to the previous identity until the bind
+  // below succeeds, and a login that fails before it must not leave that identity with this one's
+  // lower floor. The bind replaces it with this identity's times alone.
+  if (remoteDecisionTs !== null) {
+    storageService!.raiseUcDecisionFloor(remoteDecisionTs);
   }
   // A setCcpaOptout call made while the read was in flight is newer than both the value captured
   // above and the record: the read kept it, and it is the user's flag from here on, on a login as
@@ -1182,6 +1178,9 @@ export async function setUserIdentifier(
     localCcpaPendingSince = isResync ? storageService!.loadCcpaOptoutPendingSince() : null;
   }
   const localCcpaPendingSync = localCcpaPendingSince !== null;
+
+  // The decision_ts a LOGIN write gave the record, for the floor the bind leaves this identity with.
+  let loginWriteDecisionTs: number | null = null;
 
   // The read is done and any found record is already applied to local state. The rest is a pure
   // decision over the read result and the captured local state (see `decideIdentityBind`): a
@@ -1255,13 +1254,9 @@ export async function setUserIdentifier(
       );
     }
 
-    // The TRUE time of the local choice (TRUST-3225). Unknown (a choice stored before decision
-    // times were recorded) is dated now, which is what the edge would default it to, but decided
-    // here so the floor below holds the exact decision_ts the write gives the record: a category
-    // choice in the same second is then stamped after it, not tied with it and adopted over.
-    const writeDecisionTs = localDecisionTs ?? nowSeconds();
-    storageService!.raiseUcDecisionFloor(writeDecisionTs);
-    await universalConsentService!.save(
+    // Dated at the TRUE time of the local choice (TRUST-3225); the service dates an unknown one (a
+    // choice stored before decision times were recorded) at the request time, as the edge would.
+    const written = await universalConsentService!.save(
       currentConfig!,
       identifier,
       universalPrefs,
@@ -1272,8 +1267,11 @@ export async function setUserIdentifier(
       // pending choice, which is flushed on its own below.
       ccpaOnWrite,
       getSignature,
-      writeDecisionTs,
+      localDecisionTs,
     );
+    if (!isResync) {
+      loginWriteDecisionTs = written.decisionTs;
+    }
     // Logged out (or reset) while the write was in flight: nothing more is sent or changed, and the
     // device stays unbound. Checked before `currentConfig`, which reset() nulls.
     if (identityEpoch !== epochAtEntry) {
@@ -1320,6 +1318,24 @@ export async function setUserIdentifier(
     return;
   }
   storageService!.saveBoundUserHash(userHash);
+  if (!isResync) {
+    // Bound to the new identity: from here its own record times alone floor the next stamps
+    // (TRUST-3225), never the previous identity's (a previous record read off a clock running
+    // ahead would otherwise push this identity's category and CCPA stamps ahead of real time).
+    storageService!.resetUcDecisionFloor(laterTs(remoteDecisionTs, loginWriteDecisionTs));
+    storageService!.rebaseCcpaDecisionFloor(remoteDecisionTs);
+  }
+}
+
+/** The later of two optional unix-second times, or `null` when both are unknown. */
+function laterTs(a: number | null, b: number | null): number | null {
+  if (a === null) {
+    return b;
+  }
+  if (b === null) {
+    return a;
+  }
+  return Math.max(a, b);
 }
 
 /**
