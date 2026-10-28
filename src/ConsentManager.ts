@@ -42,6 +42,14 @@ let ccpaChoiceSeq = 0;
 // Counts logouts (clearUserIdentifier, reset), so a Universal Consent read or write that was in
 // flight across one applies nothing and binds nothing: its record belongs to the logged-out user.
 let identityEpoch = 0;
+// One slot per LOGIN in progress (TRUST-3448): the onBeforeWrite hook folds every write the login
+// sends to its identifier into it, and the bind promotes it to the new identity's floor. A login
+// that fails drops its slot unpromoted, so the still-bound identity's floor is left in place.
+interface LoginFloorSlot {
+  identifier: string;
+  ts: number | null;
+}
+const loginFloorSlots = new Set<LoginFloorSlot>();
 
 /**
  * Initialize the DataGrail Consent SDK.
@@ -73,9 +81,18 @@ export async function initialize(config: DataGrailConfig): Promise<void> {
   // decision_ts it sends, before it is sent (TRUST-3225): the write moves the record's updated_at
   // there, so a category choice made in the same second (even while the write is in flight) must be
   // stamped after it, or the next re-sync would tie and adopt the record over it. Hooked into the
-  // service's one send path so no write caller can forget it or derive a different time.
+  // service's one send path so no write caller can forget it or derive a different time. A write
+  // sent during a login to that login's identifier is also collected for the floor the bind gives
+  // the new identity (TRUST-3448), so no login-path write has to be threaded through by hand.
   universalConsentService = new UniversalConsentService(networkService, {
-    onBeforeWrite: (decisionTs) => storageService?.raiseUcDecisionFloor(decisionTs),
+    onBeforeWrite: (decisionTs, identifier) => {
+      storageService?.raiseUcDecisionFloor(decisionTs);
+      for (const slot of loginFloorSlots) {
+        if (slot.identifier === identifier) {
+          slot.ts = laterTs(slot.ts, decisionTs);
+        }
+      }
+    },
   });
   currentConfig = await configService.fetchConfig(config.configUrl);
 
@@ -1113,8 +1130,60 @@ export async function setUserIdentifier(
   }
   const boundHash = storageService!.loadBoundUserHash();
   const isResync = boundHash === userHash;
-  const boundToOther = boundHash !== null && !isResync;
+  const call: IdentityCall = {
+    identifier,
+    apiKey,
+    getSignature,
+    trackingSignal,
+    epochAtEntry,
+    userHash,
+    isResync,
+    boundToOther: boundHash !== null && !isResync,
+  };
+  if (isResync) {
+    await syncIdentity(call, null);
+    return;
+  }
+  // A login: every write it sends to this identifier lands in its own slot, promoted at the bind.
+  // Dropped however the login ends, so a failed one never reaches the floor (TRUST-3448).
+  const loginFloor: LoginFloorSlot = { identifier, ts: null };
+  loginFloorSlots.add(loginFloor);
+  try {
+    await syncIdentity(call, loginFloor);
+  } finally {
+    loginFloorSlots.delete(loginFloor);
+  }
+}
 
+/** What {@link setUserIdentifier} resolved before the read: the call's inputs and the binding. */
+interface IdentityCall {
+  identifier: string;
+  apiKey: string;
+  getSignature: SignatureProvider | undefined;
+  trackingSignal: ATTStatus;
+  epochAtEntry: number;
+  userHash: string;
+  isResync: boolean;
+  boundToOther: boolean;
+}
+
+/**
+ * The read, decision, write and bind of {@link setUserIdentifier}. `loginFloor` is the login's
+ * pending floor slot (`null` on a re-sync), filled by the onBeforeWrite hook.
+ */
+async function syncIdentity(
+  {
+    identifier,
+    apiKey,
+    getSignature,
+    trackingSignal,
+    epochAtEntry,
+    userHash,
+    isResync,
+    boundToOther,
+  }: IdentityCall,
+  loginFloor: LoginFloorSlot | null,
+): Promise<void> {
   // Capture the user's RAW local choice BEFORE the rehydrate below overwrites storage with the
   // signal-reconciled view. Only an EXPLICIT choice may be written: initialize() auto-persists
   // config defaults, and hasUserConsented() is the flag that tells the two apart. State left by a
@@ -1178,9 +1247,6 @@ export async function setUserIdentifier(
     localCcpaPendingSince = isResync ? storageService!.loadCcpaOptoutPendingSince() : null;
   }
   const localCcpaPendingSync = localCcpaPendingSince !== null;
-
-  // The decision_ts a LOGIN write gave the record, for the floor the bind leaves this identity with.
-  let loginWriteDecisionTs: number | null = null;
 
   // The read is done and any found record is already applied to local state. The rest is a pure
   // decision over the read result and the captured local state (see `decideIdentityBind`): a
@@ -1256,7 +1322,7 @@ export async function setUserIdentifier(
 
     // Dated at the TRUE time of the local choice (TRUST-3225); the service dates an unknown one (a
     // choice stored before decision times were recorded) at the request time, as the edge would.
-    const written = await universalConsentService!.save(
+    await universalConsentService!.save(
       currentConfig!,
       identifier,
       universalPrefs,
@@ -1269,9 +1335,6 @@ export async function setUserIdentifier(
       getSignature,
       localDecisionTs,
     );
-    if (!isResync) {
-      loginWriteDecisionTs = written.decisionTs;
-    }
     // Logged out (or reset) while the write was in flight: nothing more is sent or changed, and the
     // device stays unbound. Checked before `currentConfig`, which reset() nulls.
     if (identityEpoch !== epochAtEntry) {
@@ -1318,11 +1381,12 @@ export async function setUserIdentifier(
     return;
   }
   storageService!.saveBoundUserHash(userHash);
-  if (!isResync) {
+  if (loginFloor !== null) {
     // Bound to the new identity: from here its own record times alone floor the next stamps
     // (TRUST-3225), never the previous identity's (a previous record read off a clock running
     // ahead would otherwise push this identity's category and CCPA stamps ahead of real time).
-    storageService!.resetUcDecisionFloor(laterTs(remoteDecisionTs, loginWriteDecisionTs));
+    // Those times are the record read and every write this login sent it (TRUST-3448).
+    storageService!.resetUcDecisionFloor(laterTs(remoteDecisionTs, loginFloor.ts));
     storageService!.rebaseCcpaDecisionFloor(remoteDecisionTs);
   }
 }

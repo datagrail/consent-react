@@ -261,7 +261,8 @@ export class StorageService {
 
   /**
    * A LOGIN bound the device to a new identity, whose record is known to hold a decision at `ts`
-   * (the later of its updated_at read and the decision_ts written to it, or `null` for neither):
+   * (the latest of its updated_at read and every decision_ts the login wrote to it, or `null` for
+   * none):
    * the floor is that identity's alone from here on, never the previous identity's. Only called
    * once the bind succeeded, so a failed login leaves the still-bound identity's floor in place.
    */

@@ -51,6 +51,7 @@ import {
   saveTrackingAuthorizationPreferences,
 } from '../../src/ConsentManager';
 import { StorageService } from '../../src/storage/StorageService';
+import { UniversalConsentService } from '../../src/universal/UniversalConsentService';
 import type { ConsentPreferences } from '../../src/types';
 
 const baseConfigJson = fs.readFileSync(
@@ -2278,6 +2279,41 @@ describe('ConsentManager — Universal Consent', () => {
         // it (B's lower floor must not have replaced A's).
         await rejectAll();
         expect(deviceStorage().loadDecisionTs()).toBe(T0 + 1);
+      });
+
+      it('a login floors the new identity on every write it sent, not just the one it awaited (TRUST-3448)', async () => {
+        // An unbound device with an explicit choice made at T0-100.
+        setNow(T0 - 100);
+        mockFetchSequence(universalConfigJson, response(200, ''));
+        await initUniversal();
+        await savePreferences(explicitChoice(true));
+        setNow(T0);
+
+        // The login misses, so it writes the local choice (dated T0-100). A second write to the same
+        // identifier is sent before the bind, dated T0+40 (a later login-path write, e.g. a flush).
+        // Only the first one's result reaches setUserIdentifier.
+        const realSave = UniversalConsentService.prototype.save;
+        const saveSpy = jest
+          .spyOn(UniversalConsentService.prototype, 'save')
+          .mockImplementationOnce(async function (this: UniversalConsentService, ...args) {
+            const first = await realSave.apply(this, args);
+            const [config, identifier, prefs, apiKey, , signer] = args;
+            await realSave.call(this, config, identifier, prefs, apiKey, null, signer, T0 + 40);
+            return first;
+          });
+        const fetchMock = stubUcFetch(notFound());
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        saveSpy.mockRestore();
+        expect(
+          ucPosts(fetchMock).map(
+            (post) => JSON.parse((post[1] as { body: string }).body).decision_ts,
+          ),
+        ).toEqual([T0 - 100, T0 + 40]);
+        expect(deviceStorage().loadBoundUserHash()).toBe(USER_HASH);
+
+        // The record's updated_at is T0+40 now, so a revocation this second is stamped after it.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 41);
       });
 
       it("a previous identity's record time does not reach the new identity's stamps through a CCPA write", async () => {
