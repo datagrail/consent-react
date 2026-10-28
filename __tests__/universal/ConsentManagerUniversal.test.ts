@@ -1559,7 +1559,23 @@ describe('ConsentManager — Universal Consent', () => {
       recordCcpaOptout: null as boolean | null,
       syncOptout: false,
       ccpaPendingSync: false,
+      ccpaSetDuringRead: false,
     };
+    // A write-through's CCPA side (TRUST-3391): carry the flag on the write (a miss with nothing
+    // pending), restore the captured local flag, adopt a found signal-only record's, flush a pending one.
+    const write = (ccpa: {
+      carryCcpa?: boolean;
+      restoreLocalCcpa?: boolean;
+      adoptCcpaFromRecord?: boolean | null;
+      flushPendingCcpa?: boolean;
+    }) => ({
+      kind: 'write',
+      carryCcpa: false,
+      restoreLocalCcpa: false,
+      adoptCcpaFromRecord: null,
+      flushPendingCcpa: false,
+      ...ccpa,
+    });
 
     it('login + found signal-only record: bindOnly, neutral when explicit/other state, adopts record CCPA', () => {
       expect(
@@ -1598,7 +1614,7 @@ describe('ConsentManager — Universal Consent', () => {
           hasExplicitChoice: true,
           localIsNewerThanRecord: true,
         }),
-      ).toEqual({ kind: 'write' });
+      ).toEqual(write({}));
     });
 
     it('found usable record + re-sync change that is NOT newer than the record: adopt (TRUST-3225)', () => {
@@ -1660,12 +1676,11 @@ describe('ConsentManager — Universal Consent', () => {
         ccpaPendingSync: true,
       };
       expect(decideIdentityBind(resyncAdopt)).toEqual({ kind: 'flushCcpa' });
-      // A newer local choice is a write-through. Over a found record it omits the CCPA flag and the
-      // setUserIdentifier executor flushes the pending choice after it (TRUST-3391 moves that
-      // choice into this decision).
-      expect(decideIdentityBind({ ...resyncAdopt, localIsNewerThanRecord: true })).toEqual({
-        kind: 'write',
-      });
+      // A newer local choice is a write-through. Over a found record it omits the CCPA flag, keeps
+      // the pending choice locally and flushes it after the category write.
+      expect(decideIdentityBind({ ...resyncAdopt, localIsNewerThanRecord: true })).toEqual(
+        write({ restoreLocalCcpa: true, flushPendingCcpa: true }),
+      );
       // No flush on a login, with the gate off, or without an explicit local choice.
       const adopt = { kind: 'bindOnly', returnToNeutral: false, adoptCcpaFromRecord: null };
       expect(decideIdentityBind({ ...resyncAdopt, isResync: false })).toEqual(adopt);
@@ -1674,7 +1689,11 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     it('miss (or re-sync signal-only) + explicit local choice: write', () => {
-      expect(decideIdentityBind({ ...base, hasExplicitChoice: true })).toEqual({ kind: 'write' });
+      // A miss creates the record: the local flag rides the write and is kept locally.
+      expect(decideIdentityBind({ ...base, hasExplicitChoice: true })).toEqual(
+        write({ carryCcpa: true, restoreLocalCcpa: true }),
+      );
+      // A found signal-only re-sync with the gate off: the record's flag is left as it is.
       expect(
         decideIdentityBind({
           ...base,
@@ -1682,7 +1701,43 @@ describe('ConsentManager — Universal Consent', () => {
           isResync: true,
           hasExplicitChoice: true,
         }),
-      ).toEqual({ kind: 'write' });
+      ).toEqual(write({}));
+    });
+
+    it('re-sync write over a found signal-only record: the CCPA side (TRUST-3391)', () => {
+      const signalOnlyResync = {
+        ...base,
+        recordFound: true,
+        isResync: true,
+        hasExplicitChoice: true,
+        syncOptout: true,
+        recordCcpaOptout: true,
+      };
+      // Gate on, nothing pending: the record's flag is adopted, never sent on the category write.
+      expect(decideIdentityBind(signalOnlyResync)).toEqual(write({ adoptCcpaFromRecord: true }));
+      expect(decideIdentityBind({ ...signalOnlyResync, recordCcpaOptout: null })).toEqual(
+        write({ adoptCcpaFromRecord: false }),
+      );
+      // A pending choice is kept and flushed on its own, not adopted over.
+      expect(decideIdentityBind({ ...signalOnlyResync, ccpaPendingSync: true })).toEqual(
+        write({ restoreLocalCcpa: true, flushPendingCcpa: true }),
+      );
+      // A choice made during the read is newer than the record: not adopted over.
+      expect(decideIdentityBind({ ...signalOnlyResync, ccpaSetDuringRead: true })).toEqual(
+        write({}),
+      );
+      // A found record WITH usable prefs: the read already adopted its flag, so nothing here.
+      expect(
+        decideIdentityBind({
+          ...signalOnlyResync,
+          hasUsablePrefs: true,
+          localIsNewerThanRecord: true,
+        }),
+      ).toEqual(write({}));
+      // A re-sync miss with a pending choice: flushed on its own, never carried by the write.
+      expect(
+        decideIdentityBind({ ...signalOnlyResync, recordFound: false, ccpaPendingSync: true }),
+      ).toEqual(write({ restoreLocalCcpa: true, flushPendingCcpa: true }));
     });
   });
 
@@ -1769,6 +1824,19 @@ describe('ConsentManager — Universal Consent', () => {
       global.fetch = mock;
       return mock;
     }
+
+    /** The Universal Consent config with the syncOptout gate on. */
+    const gatedConfig = () => {
+      const parsed = JSON.parse(universalConfigJson);
+      return JSON.stringify({
+        ...parsed,
+        universalConsent: { ...parsed.universalConsent, sync_optout: true },
+      });
+    };
+    const ccpaWrites = (mock: jest.Mock) =>
+      ucPosts(mock)
+        .map((call) => JSON.parse((call[1] as { body: string }).body))
+        .filter((body) => body.ccpa_optout !== undefined);
 
     beforeEach(() => {
       nowSpy = jest.spyOn(Date, 'now');
@@ -1995,18 +2063,6 @@ describe('ConsentManager — Universal Consent', () => {
     });
 
     describe('the CCPA decision time is monotonic per device', () => {
-      const gatedConfig = () => {
-        const parsed = JSON.parse(universalConfigJson);
-        return JSON.stringify({
-          ...parsed,
-          universalConsent: { ...parsed.universalConsent, sync_optout: true },
-        });
-      };
-      const ccpaWrites = (mock: jest.Mock) =>
-        ucPosts(mock)
-          .map((call) => JSON.parse((call[1] as { body: string }).body))
-          .filter((body) => body.ccpa_optout !== undefined);
-
       it('a clock running behind still dates a choice after the adopted record and the last choice', async () => {
         // This device's clock is 200 s behind: the record it re-syncs was decided at T0+200 by its
         // clock, T0+150 being the opt-out made on another device just before.
@@ -2070,6 +2126,196 @@ describe('ConsentManager — Universal Consent', () => {
 
         reset();
         expect(deviceStorage().loadCcpaDecisionTs()).toBeNull();
+      });
+
+      it("a category choice after this device's own CCPA write is stamped after it, so a re-sync writes it", async () => {
+        // The device adopts record R (decided at T0) at T0, so its category time is R.
+        mockFetchSequence(gatedConfig(), response(200, ''));
+        await initUniversal();
+        stubUcFetch(recordAt(T0, true));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadDecisionTs()).toBe(T0);
+
+        // In the same second the user opts out of sale here: that write is stamped R + 1 and moves
+        // the record's updated_at to R + 1.
+        stubUcFetch();
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0 + 1);
+
+        // ...then revokes everything. Floored on the previous category time alone this would be
+        // R + 1, a tie with the record, which the next re-sync would adopt over the revocation.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 2);
+
+        const fetchMock = stubUcFetch(
+          found({
+            consent_preferences: {
+              isCustomised: true,
+              cookieOptions: {
+                'dg-category-essential': true,
+                'dg-category-marketing': true,
+                'dg-category-performance': true,
+                'dg-category-functional': true,
+              },
+            },
+            ccpa_optout: true,
+            updated_at: iso(T0 + 1),
+          }),
+        );
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        const body = JSON.parse((posts[0][1] as { body: string }).body);
+        expect(body.decision_ts).toBe(T0 + 2);
+        expect(body.consent_preferences.cookieOptions['dg-category-marketing']).toBe(false);
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      });
+
+      it('a category choice is stamped after the latest record read here', async () => {
+        // A clock running behind: the signal-only record read here was decided at T0+200 by its
+        // clock. The re-sync writes the local choice through and keeps its own time (T0-100).
+        await boundDeviceWithChoiceAt(T0 - 100, true, gatedConfig());
+        setNow(T0);
+        stubUcFetch(found({ consent_preferences: null, updated_at: iso(T0 + 200) }));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 - 100);
+
+        await rejectAll();
+
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 201);
+      });
+    });
+
+    describe("the category stamp floor is the bound identity's record (TRUST-3225)", () => {
+      const marketingIn = (post: unknown[]) =>
+        JSON.parse((post[1] as { body: string }).body).consent_preferences.cookieOptions[
+          'dg-category-marketing'
+        ];
+
+      it('a write sent with an unknown local time floors a same-second rejectAll, so the next re-sync writes it', async () => {
+        // An unbound device with a choice of unknown time (stored before decision times existed).
+        mockFetchSequence(universalConfigJson, response(200, ''));
+        await initUniversal();
+        await savePreferences(explicitChoice(true));
+        deviceStorage().clearDecisionTs();
+
+        // Login miss: the write creates the record, dated now (T0), so its updated_at is T0.
+        let fetchMock = stubUcFetch(notFound());
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        const created = ucPosts(fetchMock);
+        expect(created).toHaveLength(1);
+        expect(JSON.parse((created[0][1] as { body: string }).body).decision_ts).toBe(T0);
+        expect(deviceStorage().loadDecisionTs()).toBeNull();
+
+        // A revocation in the same second is stamped after that write, not tied with it.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 1);
+
+        // The re-sync sees the local revocation as newer than the record and writes it.
+        fetchMock = stubUcFetch(recordAt(T0, true));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        const posts = ucPosts(fetchMock);
+        expect(posts).toHaveLength(1);
+        expect(JSON.parse((posts[0][1] as { body: string }).body).decision_ts).toBe(T0 + 1);
+        expect(marketingIn(posts[0])).toBe(false);
+        expect(isCategoryEnabled('dg-category-marketing')).toBe(false);
+      });
+
+      it("logout drops the logged-out identity's floor; the device-wide CCPA floor stays", async () => {
+        // The bound user's record was stamped 250 s ahead of this clock by another device.
+        await boundDeviceWithChoiceAt(T0, true);
+        stubUcFetch(found({ consent_preferences: null, updated_at: iso(T0 + 250) }));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        clearUserIdentifier();
+        expect(deviceStorage().loadCcpaDecisionTs()).toBe(T0 + 250);
+
+        // The next visitor's choice is dated by this clock, not pushed past the previous user's record.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0);
+      });
+
+      it("a login (even without a logout first) replaces the floor with the new identity's record", async () => {
+        setNow(T0);
+        bindDeviceTo('d'.repeat(64));
+        mockFetchSequence(universalConfigJson, response(200, ''));
+        await initUniversal();
+        deviceStorage().raiseUcDecisionFloor(T0 + 250);
+
+        stubUcFetch(recordAt(T0 - 50, true));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 - 50);
+
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0);
+      });
+
+      it("a login that fails before the bind keeps the still-bound identity's floor", async () => {
+        // Bound to A, whose record this device knows to hold a decision at T0; the local choice is
+        // older than that.
+        setNow(T0 - 100);
+        bindDeviceTo('d'.repeat(64));
+        mockFetchSequence(universalConfigJson, response(200, ''));
+        await initUniversal();
+        await savePreferences(explicitChoice(true));
+        setNow(T0);
+        deviceStorage().raiseUcDecisionFloor(T0);
+
+        // The host logs B in without logging A out. B's record (decided at T0-50) is read and
+        // adopted, then a host listener throws before the bind: the device stays bound to A.
+        const unsubscribe = onConsentChanged(() => {
+          throw new Error('host listener failed');
+        });
+        stubUcFetch(recordAt(T0 - 50, true));
+        await expect(setUserIdentifier(ID, { apiKey: API_KEY, getSignature })).rejects.toThrow(
+          'host listener failed',
+        );
+        unsubscribe();
+        expect(deviceStorage().loadBoundUserHash()).toBe('d'.repeat(64));
+
+        // A revocation in the same second as A's record is still stamped after it, not tied with
+        // it (B's lower floor must not have replaced A's).
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 1);
+      });
+
+      it("a previous identity's record time does not reach the new identity's stamps through a CCPA write", async () => {
+        // A's record was read off a clock 250 s ahead; the device-wide CCPA floor holds that time.
+        setNow(T0 - 100);
+        bindDeviceTo('d'.repeat(64));
+        mockFetchSequence(gatedConfig(), response(200, ''));
+        await initUniversal();
+        setNow(T0);
+        deviceStorage().raiseCcpaDecisionFloor(T0 + 250);
+        clearUserIdentifier();
+
+        // B logs in and adopts its record (decided at T0-50)...
+        stubUcFetch(recordAt(T0 - 50, true));
+        await setUserIdentifier(ID, { apiKey: API_KEY, getSignature });
+
+        // ...then opts out of sale: dated by this clock (just after the floor, now capped at now),
+        // not pushed past A's record (T0+251).
+        const fetchMock = stubUcFetch();
+        await setCcpaOptout(true, { identifier: ID, apiKey: API_KEY, getSignature });
+        expect(ccpaWrites(fetchMock).map((body) => body.decision_ts)).toEqual([T0 + 1]);
+
+        // ...so B's next category choice, floored on that write, is not pushed ~250 s ahead either.
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 2);
+      });
+
+      it("the floor never exceeds the edge's future clamp, which is the latest time a record can hold", async () => {
+        await boundDeviceWithChoiceAt(T0 - 100, true);
+        setNow(T0);
+        deviceStorage().raiseUcDecisionFloor(T0 + 500);
+        // ...and never lowers.
+        deviceStorage().raiseUcDecisionFloor(T0 + 10);
+
+        // Floored on T0+300 (the clamp), not T0+500.
+        setNow(T0 + 250);
+        await rejectAll();
+        expect(deviceStorage().loadDecisionTs()).toBe(T0 + 301);
       });
     });
   });

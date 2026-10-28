@@ -513,6 +513,71 @@ describe('UniversalConsentService', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    describe('onBeforeWrite (TRUST-3225)', () => {
+      it('gets the exact decision_ts of every write, before the write awaits anything', async () => {
+        const fetchMock = mockFetch(200, '');
+        const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_700_000_500 * 1000);
+        const seen: Array<[number, number]> = [];
+        // The hash is the write's first await: the hook must already have run when it is asked for.
+        mockComputeUserHash.mockImplementation(async () => {
+          seen.push([-1, fetchMock.mock.calls.length]);
+          return USER_HASH;
+        });
+        const hooked = new UniversalConsentService(new NetworkService(), {
+          onBeforeWrite: (ts) => seen.push([ts, fetchMock.mock.calls.length]),
+        });
+        config.universalConsent = { enabled: true, syncOptout: true };
+
+        // An unknown local time: the request time stands in, and the hook gets that, not null.
+        await expect(
+          hooked.save(config, 'uc-user-7f3a9c', prefs, 'api-key-123', null, undefined, null),
+        ).resolves.toEqual({ staleFields: [], decisionTs: 1_700_000_500 });
+        await hooked.save(
+          config,
+          'uc-user-7f3a9c',
+          prefs,
+          'api-key-123',
+          null,
+          undefined,
+          1_700_000_100,
+        );
+        await hooked.saveCcpaOptout(config, 'uc-user-7f3a9c', 'api-key-123', {
+          ccpaOptout: true,
+          decisionTs: 1_700_000_200,
+        });
+        nowSpy.mockRestore();
+
+        expect(seen).toEqual([
+          [1_700_000_500, 0],
+          [-1, 0],
+          [1_700_000_100, 1],
+          [-1, 1],
+          [1_700_000_200, 2],
+          [-1, 2],
+        ]);
+        const sent = fetchMock.mock.calls.map(
+          (call) => JSON.parse((call[1] as { body: string }).body).decision_ts,
+        );
+        expect(sent).toEqual([1_700_000_500, 1_700_000_100, 1_700_000_200]);
+      });
+
+      it('is not called when the syncOptout gate keeps a CCPA write from being sent', async () => {
+        const fetchMock = mockFetch(200, '');
+        const onBeforeWrite = jest.fn();
+        const hooked = new UniversalConsentService(new NetworkService(), { onBeforeWrite });
+
+        await expect(
+          hooked.saveCcpaOptout(config, 'uc-user-7f3a9c', 'api-key-123', {
+            ccpaOptout: true,
+            decisionTs: 1_700_000_000,
+          }),
+        ).resolves.toBeNull();
+
+        expect(onBeforeWrite).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+      });
+    });
+
     it('saveCcpaOptout sends a CCPA-only body dated at the choice', async () => {
       const fetchMock = mockFetch(200, '');
       config.universalConsent = { enabled: true, syncOptout: true };
@@ -522,7 +587,7 @@ describe('UniversalConsentService', () => {
           ccpaOptout: true,
           decisionTs: 1_700_000_000,
         }),
-      ).resolves.toEqual({ staleFields: [] });
+      ).resolves.toEqual({ staleFields: [], decisionTs: 1_700_000_000 });
 
       const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body);
       expect(body).toEqual({

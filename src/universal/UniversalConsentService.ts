@@ -68,8 +68,30 @@ interface RawUniversalConsentRecord {
  * Callers must apply signal reconciliation before acting on what comes back (see
  * `reconcileSignals`).
  */
+/** Options for {@link UniversalConsentService}. */
+export interface UniversalConsentServiceOptions {
+  /**
+   * Called synchronously with the exact `decision_ts` of every write, once it is certain to be sent
+   * and before its first await (TRUST-3225). The one place the record's coming `updated_at` is
+   * known, so a caller that must order later choices after it hooks here rather than re-deriving
+   * the syncOptout gate and the request-time fallback at each call site.
+   */
+  onBeforeWrite?: (decisionTs: number) => void;
+}
+
+/** What a sent write resolved to. */
+export interface UniversalConsentWriteResult {
+  /** The record-level fields the edge kept a newer stored value for (`stale_fields` on a 200). */
+  staleFields: string[];
+  /** The `decision_ts` the write carried: the caller's, or the request time standing in for it. */
+  decisionTs: number;
+}
+
 export class UniversalConsentService {
-  constructor(private readonly network: NetworkService) {}
+  constructor(
+    private readonly network: NetworkService,
+    private readonly options: UniversalConsentServiceOptions = {},
+  ) {}
 
   /**
    * Universal Consent base URL. This endpoint is a CloudFront behavior, NOT a Rails route, so
@@ -201,7 +223,8 @@ export class UniversalConsentService {
    *   (`null`/omitted: a choice stored before the SDK recorded decision times) the request timestamp
    *   stands in, which is exactly what the edge defaults a provenance-free write to.
    * @returns the record-level fields the edge kept a newer stored value for (`stale_fields` on a
-   *   200), e.g. `['ccpa_optout']` when the record already holds a newer CCPA decision.
+   *   200), e.g. `['ccpa_optout']` when the record already holds a newer CCPA decision, and the
+   *   `decision_ts` the write carried.
    *
    * `ccpaOptout: null`, or the syncOptout gate off, omits the field, leaving the record's register
    * untouched: the write carries no CCPA decision.
@@ -214,7 +237,7 @@ export class UniversalConsentService {
     ccpaOptout: boolean | null,
     getSignature?: SignatureProvider,
     decisionTs?: number | null,
-  ): Promise<{ staleFields: string[] }> {
+  ): Promise<UniversalConsentWriteResult> {
     // syncOptout is a feature gate, NOT the opt-out value itself (TRUST-2591). With it off the field
     // is left out entirely (TRUST-3381, as web and the native SDKs): a `false` would record "not
     // opted out" and could override a real opt-out made on another device. With it on, `null` omits
@@ -256,7 +279,7 @@ export class UniversalConsentService {
     identifier: string,
     apiKey: string,
     write: { ccpaOptout: boolean; decisionTs: number; getSignature?: SignatureProvider },
-  ): Promise<{ staleFields: string[] } | null> {
+  ): Promise<UniversalConsentWriteResult | null> {
     if (config.universalConsent?.syncOptout !== true) {
       return null;
     }
@@ -285,11 +308,8 @@ export class UniversalConsentService {
     getSignature: SignatureProvider | undefined,
     decisionTs: number | null | undefined,
     buildBody: (userHash: string, effectiveDecisionTs: number) => Record<string, unknown>,
-  ): Promise<{ staleFields: string[] }> {
+  ): Promise<UniversalConsentWriteResult> {
     const projectId = UniversalConsentService.requireProjectId(config);
-    const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
-
-    const headers: Record<string, string> = { 'X-DG-Api-Key': apiKey };
 
     // The SDK owns the timestamp (and nonce, below) and builds the string-to-sign; the customer's
     // backend only HMACs it, so the SDK-sent headers are the exact bytes that were signed.
@@ -298,6 +318,13 @@ export class UniversalConsentService {
     // would let a stale device's re-sync out-rank a newer revocation made on another device, since
     // the edge's per-category merge is decision-time last-writer-wins.
     const effectiveDecisionTs = decisionTs ?? timestamp;
+    // Before the first await, so a choice made while this write is in flight is already ordered
+    // after the updated_at it gives the record.
+    this.options.onBeforeWrite?.(effectiveDecisionTs);
+
+    const userHash = await computeUserHash(config.dgCustomerId, projectId, identifier);
+
+    const headers: Record<string, string> = { 'X-DG-Api-Key': apiKey };
 
     if (getSignature) {
       const nonce = generateNonceHex();
@@ -349,7 +376,7 @@ export class UniversalConsentService {
         `Universal consent write failed with status ${response.status}`,
       );
     }
-    return { staleFields: parseStaleFields(response.data) };
+    return { staleFields: parseStaleFields(response.data), decisionTs: effectiveDecisionTs };
   }
 }
 
