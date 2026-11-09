@@ -3,6 +3,8 @@ name: trufflehog
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # Kept for byte-identical parity across the S2 repo rollout
+  # (same workflow is deployed to dgapp and dg-terraform).
   merge_group:
 
 jobs:
@@ -10,6 +12,8 @@ jobs:
     # Doesn't need to run on merge queue
     if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -21,3 +25,4 @@ jobs:
           path: ./
           base: ${{ github.event.pull_request.base.sha }}
           head: ${{ github.event.pull_request.head.sha }}
+          version: v3.94.1
